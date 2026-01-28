@@ -220,11 +220,50 @@ async def update_config_values(updates: dict) -> dict:
             config['candle_interval'] = new_interval
             updated_fields.append('candle_interval')
             logger.info(f"[CONFIG] Candle interval changed to: {new_interval}s")
-            # Reset SuperTrend when interval changes
+            # Reset indicator when interval changes
             bot = get_trading_bot()
-            bot.reset_supertrend()
+            bot.reset_indicator()
         else:
             logger.warning(f"[CONFIG] Invalid interval: {new_interval}. Valid: {valid_intervals}")
+    
+    if updates.get('indicator_type') is not None:
+        new_indicator = updates['indicator_type'].lower()
+        valid_indicators = ['supertrend', 'rsi', 'macd', 'ma', 'bollinger', 'stochastic', 'adx', 'supertrend_macd']
+        if new_indicator in valid_indicators:
+            config['indicator_type'] = new_indicator
+            updated_fields.append('indicator_type')
+            logger.info(f"[CONFIG] Indicator changed to: {new_indicator}")
+            # Initialize the new indicator
+            bot = get_trading_bot()
+            bot._initialize_indicator()
+        else:
+            logger.warning(f"[CONFIG] Invalid indicator: {new_indicator}. Valid: {valid_indicators}")
+    
+    # Update indicator parameters if provided
+    indicator_params = {
+        'supertrend_period': int,
+        'supertrend_multiplier': int,
+        'rsi_period': int,
+        'macd_fast': int,
+        'macd_slow': int,
+        'macd_signal': int,
+        'ma_fast_period': int,
+        'ma_slow_period': int,
+        'bollinger_period': int,
+        'bollinger_std': float,
+        'stochastic_k_period': int,
+        'stochastic_d_period': int,
+        'adx_period': int,
+    }
+    
+    for param, param_type in indicator_params.items():
+        if updates.get(param) is not None:
+            try:
+                config[param] = param_type(updates[param])
+                updated_fields.append(param)
+                logger.info(f"[CONFIG] {param} changed to: {config[param]}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"[CONFIG] Invalid value for {param}: {e}")
     
     await save_config()
     logger.info(f"[CONFIG] Updated: {updated_fields}")

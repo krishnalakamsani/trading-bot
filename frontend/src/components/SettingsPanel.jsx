@@ -45,6 +45,21 @@ const SettingsPanel = ({ onClose }) => {
 
   const [saving, setSaving] = useState(false);
 
+  // Sync local state with config when it changes
+  React.useEffect(() => {
+    setOrderQty(config.order_qty);
+    setMaxTrades(config.max_trades_per_day);
+    setMaxLoss(config.daily_max_loss);
+    setMaxLossPerTrade(config.max_loss_per_trade || 0);
+    setInitialSL(config.initial_stoploss || 0);
+    setTrailStart(config.trail_start_profit);
+    setTrailStep(config.trail_step);
+    setTargetPoints(config.target_points || 0);
+    setRiskPerTrade(config.risk_per_trade || 0);
+    setSelectedIndex(config.selected_index || "NIFTY");
+    setIndicatorType(config.indicator_type || "supertrend");
+  }, [config]);
+
   const handleSaveCredentials = async () => {
     if (!accessToken || !clientId) {
       return;
