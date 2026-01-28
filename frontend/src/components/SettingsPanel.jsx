@@ -41,7 +41,6 @@ const SettingsPanel = ({ onClose }) => {
 
   // Strategy Parameters
   const [selectedIndex, setSelectedIndex] = useState(config?.selected_index || "NIFTY");
-  const [indicatorType, setIndicatorType] = useState(config?.indicator_type || "supertrend_macd");
 
   const [saving, setSaving] = useState(false);
   const isFirstRender = React.useRef(true);
@@ -59,7 +58,6 @@ const SettingsPanel = ({ onClose }) => {
       setTargetPoints(config?.target_points || 0);
       setRiskPerTrade(config?.risk_per_trade || 0);
       setSelectedIndex(config?.selected_index || "NIFTY");
-      setIndicatorType(config?.indicator_type || "supertrend_macd");
       isFirstRender.current = false;
     }
   }, []); // Empty dependency array - only run once on mount
@@ -98,10 +96,7 @@ const SettingsPanel = ({ onClose }) => {
     setSaving(true);
     const payload = {
       selected_index: selectedIndex,
-      indicator_type: indicatorType,
     };
-    console.log("[handleSaveStrategy] State values:", { selectedIndex, indicatorType });
-    console.log("[handleSaveStrategy] Sending payload:", payload);
     await updateConfig(payload);
     setSaving(false);
   };
@@ -168,23 +163,7 @@ const SettingsPanel = ({ onClose }) => {
                 </p>
               </div>
 
-              <div>
-                <Label htmlFor="indicator-select">Indicator</Label>
-                <Select
-                  value={indicatorType}
-                  onValueChange={setIndicatorType}
-                >
-                  <SelectTrigger className="mt-1 rounded-sm" data-testid="settings-indicator-select">
-                    <SelectValue placeholder="Select Indicator" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="supertrend_macd">SuperTrend + MACD</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Select trading strategy
-                </p>
-              </div>
+
             </div>
 
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-sm text-xs text-blue-800">
@@ -204,9 +183,7 @@ const SettingsPanel = ({ onClose }) => {
                 size="sm"
                 className="rounded-sm btn-active"
                 data-testid="save-strategy-btn"
-              >
-                <Save className="w-3 h-3 mr-1" />
-                {saving ? "Saving..." : "Save Strategy"}
+              >SuperTrend (trigger) + MACD (confirmation) - only enters when MACD aligns with SuperTrend direction
               </Button>
             </div>
           </TabsContent>

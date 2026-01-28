@@ -69,7 +69,7 @@ class TradingBot:
         """Reset the selected indicator"""
         if self.indicator:
             self.indicator.reset()
-            logger.info(f"[SIGNAL] Indicator reset: {config.get('indicator_type', 'supertrend')}")
+            logger.info(f"[SIGNAL] Indicator reset: {config.get('indicator_type', 'supertrend_macd')}")
     
     def is_within_trading_hours(self) -> bool:
         """Check if current time allows new entries
@@ -112,7 +112,7 @@ class TradingBot:
         
         index_name = config['selected_index']
         interval = format_timeframe(config['candle_interval'])
-        indicator_name = config.get('indicator_type', 'supertrend')
+        indicator_name = config.get('indicator_type', 'supertrend_macd')
         logger.info(f"[BOT] Started - Index: {index_name}, Timeframe: {interval}, Indicator: {indicator_name}, Mode: {bot_state['mode']}")
         
         return {"status": "success", "message": f"Bot started for {index_name} ({interval})"}
@@ -332,7 +332,7 @@ class TradingBot:
                             bot_state['last_supertrend_signal'] = signal
                             
                             # Detailed candle close log
-                            indicator_name = config.get('indicator_type', 'supertrend')
+                            indicator_name = config.get('indicator_type', 'supertrend_macd')
                             logger.info(
                                 f"[CANDLE CLOSE #{candle_number}] {index_name} | "
                                 f"H={high:.2f} L={low:.2f} C={close:.2f} | "
