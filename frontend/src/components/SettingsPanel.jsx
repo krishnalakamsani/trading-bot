@@ -114,15 +114,15 @@ const SettingsPanel = ({ onClose }) => {
             </TabsTrigger>
           </TabsList>
 
-          {/* Strategy Tab */}
-          <TabsContent value="strategy" className="space-y-4 mt-4 overflow-visible">
-            <div className="grid grid-cols-2 gap-4">
+          {/* API Credentials Tab */}
+          <TabsContent value="credentials" className="space-y-4 mt-4 overflow-visible">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-sm text-xs text-amber-800">
+              <strong>Note:</strong> Dhan access token expires daily. Update it
+              here each morning before trading.
+            </div>
+
+            <div className="space-y-3">
               <div>
-                <Label htmlFor="index-select">Index</Label>
-                <Select
-                  value={selectedIndex}
-                  onValueChange={setSelectedIndex}
-                >
                 <Label htmlFor="client-id">Client ID</Label>
                 <Input
                   id="client-id"
