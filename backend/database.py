@@ -63,6 +63,7 @@ async def load_config():
         async with aiosqlite.connect(DB_PATH) as db:
             async with db.execute('SELECT key, value FROM config') as cursor:
                 rows = await cursor.fetchall()
+                logger.info(f"[DB] Loaded {len(rows)} config entries from database")
                 for key, value in rows:
                     if key in config:
                         # Integer fields
@@ -77,6 +78,17 @@ async def load_config():
                             config[key] = value.lower() in ('true', '1', 'yes')
                         else:
                             config[key] = value
+            
+            # Migration: Update old indicator_type values
+            if config.get('indicator_type') == 'supertrend':
+                logger.warning(f"[DB] Found old indicator_type='supertrend', migrating to 'supertrend_macd'")
+                config['indicator_type'] = 'supertrend_macd'
+                await db.execute(
+                    'INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)',
+                    ('indicator_type', 'supertrend_macd')
+                )
+                await db.commit()
+                logger.info("[DB] Migrated indicator_type from 'supertrend' to 'supertrend_macd'")
     except Exception as e:
         logger.error(f"Error loading config: {e}")
 
