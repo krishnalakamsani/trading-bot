@@ -132,17 +132,9 @@ def get_config() -> dict:
         "indicator_type": config.get('indicator_type', 'supertrend'),
         "supertrend_period": config.get('supertrend_period', 7),
         "supertrend_multiplier": config.get('supertrend_multiplier', 4),
-        "rsi_period": config.get('rsi_period', 14),
         "macd_fast": config.get('macd_fast', 12),
         "macd_slow": config.get('macd_slow', 26),
         "macd_signal": config.get('macd_signal', 9),
-        "ma_fast_period": config.get('ma_fast_period', 5),
-        "ma_slow_period": config.get('ma_slow_period', 20),
-        "bollinger_period": config.get('bollinger_period', 20),
-        "bollinger_std": config.get('bollinger_std', 2),
-        "stochastic_k_period": config.get('stochastic_k_period', 14),
-        "stochastic_d_period": config.get('stochastic_d_period', 3),
-        "adx_period": config.get('adx_period', 14),
     }
 
 
@@ -229,32 +221,23 @@ async def update_config_values(updates: dict) -> dict:
     
     if updates.get('indicator_type') is not None:
         new_indicator = updates['indicator_type'].lower()
-        valid_indicators = ['supertrend', 'rsi', 'macd', 'ma', 'bollinger', 'stochastic', 'adx', 'supertrend_macd']
-        if new_indicator in valid_indicators:
+        if new_indicator == 'supertrend_macd':
             config['indicator_type'] = new_indicator
             updated_fields.append('indicator_type')
-            logger.info(f"[CONFIG] Indicator changed to: {new_indicator}")
+            logger.info(f"[CONFIG] Indicator changed to: SuperTrend + MACD")
             # Initialize the new indicator
             bot = get_trading_bot()
             bot._initialize_indicator()
         else:
-            logger.warning(f"[CONFIG] Invalid indicator: {new_indicator}. Valid: {valid_indicators}")
+            logger.warning(f"[CONFIG] Invalid indicator: {new_indicator}. Only 'supertrend_macd' is supported")
     
     # Update indicator parameters if provided
     indicator_params = {
         'supertrend_period': int,
-        'supertrend_multiplier': int,
-        'rsi_period': int,
+        'supertrend_multiplier': float,
         'macd_fast': int,
         'macd_slow': int,
         'macd_signal': int,
-        'ma_fast_period': int,
-        'ma_slow_period': int,
-        'bollinger_period': int,
-        'bollinger_std': float,
-        'stochastic_k_period': int,
-        'stochastic_d_period': int,
-        'adx_period': int,
     }
     
     for param, param_type in indicator_params.items():

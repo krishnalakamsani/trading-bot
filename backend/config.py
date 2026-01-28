@@ -42,20 +42,12 @@ config = {
     # Profit Taking
     "target_points": 0,  # Target profit points (0 = disabled)
     # Signal & Indicator Settings
-    "indicator_type": "supertrend",  # Options: supertrend, rsi, macd, ma, bollinger, stochastic, adx, supertrend_macd
+    "indicator_type": "supertrend_macd",  # SuperTrend + MACD combined strategy
     "supertrend_period": 7,
     "supertrend_multiplier": 4,
-    "rsi_period": 14,
     "macd_fast": 12,
     "macd_slow": 26,
     "macd_signal": 9,
-    "ma_fast_period": 5,
-    "ma_slow_period": 20,
-    "bollinger_period": 20,
-    "bollinger_std": 2,
-    "stochastic_k_period": 14,
-    "stochastic_d_period": 3,
-    "adx_period": 14,
     "candle_interval": 5,  # seconds (default 5s)
     "selected_index": "NIFTY",  # Default index
     # Trade protection settings
