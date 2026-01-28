@@ -11,17 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Key, Settings, ShieldCheck, Eye, EyeOff, Save, BarChart3 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Key, Settings, ShieldCheck, Eye, EyeOff, Save } from "lucide-react";
 
 const SettingsPanel = ({ onClose }) => {
-  const { config, updateConfig, indices, timeframes } = useContext(AppContext);
+  const { config, updateConfig } = useContext(AppContext);
 
   // API Credentials
   const [accessToken, setAccessToken] = useState("");
@@ -39,9 +32,6 @@ const SettingsPanel = ({ onClose }) => {
   const [targetPoints, setTargetPoints] = useState(config.target_points || 0);
   const [riskPerTrade, setRiskPerTrade] = useState(config.risk_per_trade || 0);
 
-  // Strategy Parameters
-  const [selectedIndex, setSelectedIndex] = useState(config?.selected_index || "NIFTY");
-
   const [saving, setSaving] = useState(false);
   const isFirstRender = React.useRef(true);
 
@@ -57,7 +47,6 @@ const SettingsPanel = ({ onClose }) => {
       setTrailStep(config?.trail_step || 5);
       setTargetPoints(config?.target_points || 0);
       setRiskPerTrade(config?.risk_per_trade || 0);
-      setSelectedIndex(config?.selected_index || "NIFTY");
       isFirstRender.current = false;
     }
   }, []); // Empty dependency array - only run once on mount
@@ -92,15 +81,6 @@ const SettingsPanel = ({ onClose }) => {
     setSaving(false);
   };
 
-  const handleSaveStrategy = async () => {
-    setSaving(true);
-    const payload = {
-      selected_index: selectedIndex,
-    };
-    await updateConfig(payload);
-    setSaving(false);
-  };
-
   // Get lot size for selected index
   const getSelectedIndexInfo = () => {
     const index = indices.find(i => i.name === selectedIndex);
@@ -123,11 +103,7 @@ const SettingsPanel = ({ onClose }) => {
         </DialogHeader>
 
         <Tabs defaultValue="strategy" className="w-full overflow-visible">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="strategy" className="text-xs">
-              <BarChart3 className="w-3 h-3 mr-1" />
-              Strategy
-            </TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="credentials" className="text-xs">
               <Key className="w-3 h-3 mr-1" />
               API Keys
@@ -147,56 +123,6 @@ const SettingsPanel = ({ onClose }) => {
                   value={selectedIndex}
                   onValueChange={setSelectedIndex}
                 >
-                  <SelectTrigger className="mt-1 rounded-sm" data-testid="settings-index-select">
-                    <SelectValue placeholder="Select Index" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {indices.map((index) => (
-                      <SelectItem key={index.name} value={index.name}>
-                        {index.display_name || index.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-gray-500 mt-1">
-                  Lot size: {indexInfo.lot_size}, Strike: {indexInfo.strike_interval}
-                </p>
-              </div>
-
-
-            </div>
-
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-sm text-xs text-blue-800">
-              <strong>Strategy:</strong> {indicatorType === 'supertrend_macd' 
-                ? 'SuperTrend (trigger) + MACD (confirmation) - only enters when MACD aligns with SuperTrend direction' 
-                : indicatorType.charAt(0).toUpperCase() + indicatorType.slice(1) + ' based entry/exit'}
-              <br />
-              GREEN signal = Buy CE, RED signal = Buy PE.
-              <br />
-              <em className="text-xs mt-1">Tip: Select timeframe from Controls panel</em>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <Button
-                onClick={handleSaveStrategy}
-                disabled={saving}
-                size="sm"
-                className="rounded-sm btn-active"
-                data-testid="save-strategy-btn"
-              >SuperTrend (trigger) + MACD (confirmation) - only enters when MACD aligns with SuperTrend direction
-              </Button>
-            </div>
-          </TabsContent>
-
-          {/* API Credentials Tab */}
-          <TabsContent value="credentials" className="space-y-4 mt-4 overflow-visible">
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-sm text-xs text-amber-800">
-              <strong>Note:</strong> Dhan access token expires daily. Update it
-              here each morning before trading.
-            </div>
-
-            <div className="space-y-3">
-              <div>
                 <Label htmlFor="client-id">Client ID</Label>
                 <Input
                   id="client-id"
