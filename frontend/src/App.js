@@ -100,6 +100,7 @@ function App() {
       setTrades(tradesRes.data);
       setSummary(summaryRes.data);
       setLogs(logsRes.data);
+      console.log("[App.js] Config from API:", configRes.data);
       setConfig(configRes.data);
       setIndices(indicesRes.data);
       setTimeframes(timeframesRes.data);
