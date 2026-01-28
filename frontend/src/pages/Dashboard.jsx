@@ -23,7 +23,7 @@ const Dashboard = () => {
       <TopBar onSettingsClick={() => setShowSettings(true)} />
 
       {/* Main Content */}
-      <div className="flex-1 overflow-hidden p-4 lg:p-6">
+      <div className="flex-1 overflow-auto p-4 lg:p-6">
         <div className="bento-grid h-full">
           {/* Left Column - Position & Controls (3 cols) */}
           <div className="col-span-12 lg:col-span-3 flex flex-col gap-4">

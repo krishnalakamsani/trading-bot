@@ -105,7 +105,7 @@ const SettingsPanel = ({ onClose }) => {
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="strategy" className="w-full">
+        <Tabs defaultValue="strategy" className="w-full overflow-visible">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="strategy" className="text-xs">
               <BarChart3 className="w-3 h-3 mr-1" />
@@ -122,7 +122,7 @@ const SettingsPanel = ({ onClose }) => {
           </TabsList>
 
           {/* Strategy Tab */}
-          <TabsContent value="strategy" className="space-y-4 mt-4">
+          <TabsContent value="strategy" className="space-y-4 mt-4 overflow-visible">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="index-select">Index</Label>
@@ -197,7 +197,7 @@ const SettingsPanel = ({ onClose }) => {
           </TabsContent>
 
           {/* API Credentials Tab */}
-          <TabsContent value="credentials" className="space-y-4 mt-4">
+          <TabsContent value="credentials" className="space-y-4 mt-4 overflow-visible">
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-sm text-xs text-amber-800">
               <strong>Note:</strong> Dhan access token expires daily. Update it
               here each morning before trading.
@@ -282,7 +282,7 @@ const SettingsPanel = ({ onClose }) => {
           </TabsContent>
 
           {/* Risk Parameters Tab */}
-          <TabsContent value="risk" className="space-y-4 mt-4">
+          <TabsContent value="risk" className="space-y-4 mt-4 overflow-visible">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="order-qty">Number of Lots</Label>
