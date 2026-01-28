@@ -120,6 +120,21 @@ class TradingBot:
         index_name = self.current_position.get('index_name', config['selected_index'])
         option_type = self.current_position.get('option_type', '')
         strike = self.current_position.get('strike', 0)
+        security_id = self.current_position.get('security_id', '')
+        
+        # Send exit order to Dhan (only in live mode)
+        if bot_state['mode'] != 'paper' and self.dhan and security_id:
+            index_config = get_index_config(index_name)
+            qty = config['order_qty'] * index_config['lot_size']
+            
+            try:
+                result = await self.dhan.place_order(security_id, "SELL", qty)
+                if result.get('orderId') or result.get('status') == 'success':
+                    logger.info(f"[ORDER] Exit order sent to Dhan | Order ID: {result.get('orderId', 'N/A')} | Security: {security_id}")
+                else:
+                    logger.warning(f"[ORDER] Exit order failed: {result}")
+            except Exception as e:
+                logger.error(f"[ORDER] Error sending exit order: {e}")
         
         # Update database
         await update_trade_exit(
