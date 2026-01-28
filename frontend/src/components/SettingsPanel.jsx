@@ -40,8 +40,8 @@ const SettingsPanel = ({ onClose }) => {
   const [riskPerTrade, setRiskPerTrade] = useState(config.risk_per_trade || 0);
 
   // Strategy Parameters
-  const [selectedIndex, setSelectedIndex] = useState(config.selected_index || "NIFTY");
-  const [indicatorType, setIndicatorType] = useState(config.indicator_type || "supertrend");
+  const [selectedIndex, setSelectedIndex] = useState(config?.selected_index || "NIFTY");
+  const [indicatorType, setIndicatorType] = useState(config?.indicator_type || "supertrend");
 
   const [saving, setSaving] = useState(false);
   const isFirstRender = React.useRef(true);
@@ -49,17 +49,17 @@ const SettingsPanel = ({ onClose }) => {
   // Only sync on first mount, not on every config change to avoid overwriting user edits
   React.useEffect(() => {
     if (isFirstRender.current) {
-      setOrderQty(config.order_qty);
-      setMaxTrades(config.max_trades_per_day);
-      setMaxLoss(config.daily_max_loss);
-      setMaxLossPerTrade(config.max_loss_per_trade || 0);
-      setInitialSL(config.initial_stoploss || 0);
-      setTrailStart(config.trail_start_profit);
-      setTrailStep(config.trail_step);
-      setTargetPoints(config.target_points || 0);
-      setRiskPerTrade(config.risk_per_trade || 0);
-      setSelectedIndex(config.selected_index || "NIFTY");
-      setIndicatorType(config.indicator_type || "supertrend");
+      setOrderQty(config?.order_qty || 1);
+      setMaxTrades(config?.max_trades_per_day || 5);
+      setMaxLoss(config?.daily_max_loss || 2000);
+      setMaxLossPerTrade(config?.max_loss_per_trade || 0);
+      setInitialSL(config?.initial_stoploss || 50);
+      setTrailStart(config?.trail_start_profit || 10);
+      setTrailStep(config?.trail_step || 5);
+      setTargetPoints(config?.target_points || 0);
+      setRiskPerTrade(config?.risk_per_trade || 0);
+      setSelectedIndex(config?.selected_index || "NIFTY");
+      setIndicatorType(config?.indicator_type || "supertrend");
       isFirstRender.current = false;
     }
   }, []); // Empty dependency array - only run once on mount
@@ -96,6 +96,7 @@ const SettingsPanel = ({ onClose }) => {
 
   const handleSaveStrategy = async () => {
     setSaving(true);
+    console.log("Saving strategy with:", { selected_index: selectedIndex, indicator_type: indicatorType });
     await updateConfig({
       selected_index: selectedIndex,
       indicator_type: indicatorType,
