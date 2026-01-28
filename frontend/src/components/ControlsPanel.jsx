@@ -64,7 +64,7 @@ const ControlsPanel = () => {
   };
 
   const canChangeMode = !position?.has_position;
-  const canChangeSettings = !botStatus.is_running;
+  const canChangeSettings = !botStatus.is_running && !position?.has_position;
 
   // Get selected index info
   const selectedIndexInfo = indices.find(i => i.name === (config.selected_index || "NIFTY")) || {};
