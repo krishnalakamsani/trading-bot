@@ -148,6 +148,7 @@ def get_config() -> dict:
 
 async def update_config_values(updates: dict) -> dict:
     """Update configuration values"""
+    logger.info(f"[CONFIG] Received updates: {list(updates.keys())}")
     updated_fields = []
     
     if updates.get('dhan_access_token') is not None:
