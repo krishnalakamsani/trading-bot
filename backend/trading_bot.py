@@ -327,8 +327,11 @@ class TradingBot:
                     if high > 0 and low < float('inf'):
                         indicator_value, signal = self.indicator.add_candle(high, low, close)
                         
-                        if indicator_value and signal:
+                        # Always update SuperTrend value, even if no trade signal yet
+                        if indicator_value:
                             bot_state['supertrend_value'] = indicator_value if isinstance(indicator_value, (int, float)) else str(indicator_value)
+                        
+                        if signal:
                             bot_state['last_supertrend_signal'] = signal
                             
                             # Detailed candle close log
