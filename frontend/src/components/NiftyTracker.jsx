@@ -66,30 +66,15 @@ const NiftyTracker = () => {
             {selectedIndex} Index
           </h2>
         </div>
-        <div
-          className={`status-badge ${
-            isGreen ? "status-running" : "status-error"
-          }`}
-          data-testid="supertrend-signal"
-        >
-          {isGreen ? (
-            <TrendingUp className="w-3 h-3" />
-          ) : (
-            <TrendingDown className="w-3 h-3" />
-          )}
-          <span>SuperTrend:</span>
-          <Circle className="w-2 h-2 mx-1" style={{ fill: isGreen ? "#059669" : "#DC2626", color: isGreen ? "#059669" : "#DC2626" }} />
-          <span>{isGreen ? "BULLISH" : "BEARISH"}</span>
-        </div>
       </div>
 
       <div className="p-4">
         {/* Price Display */}
-        <div className="flex items-baseline gap-4 mb-4">
+        <div className="flex items-center gap-8 mb-6">
           <div className={`rounded-sm p-2 ${flashClass}`}>
             <p className="label-text">{selectedIndex} LTP</p>
             <p
-              className="text-3xl font-bold font-mono tracking-tight text-gray-900"
+              className="text-4xl font-bold font-mono tracking-tight text-gray-900"
               data-testid="nifty-ltp"
             >
               {marketData.ltp > 0 ? marketData.ltp.toLocaleString("en-IN", {
@@ -99,55 +84,37 @@ const NiftyTracker = () => {
             </p>
           </div>
 
-          <div>
-            <p className="label-text">SuperTrend Value</p>
-            <p
-              className="text-lg font-mono tracking-tight"
-              style={{ color: signalColor }}
-              data-testid="supertrend-value"
-            >
-              {marketData.supertrend_value > 0
-                ? marketData.supertrend_value.toLocaleString("en-IN", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })
-                : "—"}
-            </p>
-          </div>
+          <div className="flex flex-col gap-4">
+            {/* SuperTrend */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-sm border border-gray-200">
+              <div>
+                <p className="label-text mb-1">SuperTrend</p>
+                <p className="text-lg font-mono font-bold" style={{ color: isGreen ? "#059669" : "#DC2626" }} data-testid="supertrend-value">
+                  {marketData.supertrend_value > 0
+                    ? marketData.supertrend_value.toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    : "—"}
+                </p>
+              </div>
+              <Circle className="w-4 h-4 flex-shrink-0" style={{ fill: isGreen ? "#059669" : "#DC2626", color: isGreen ? "#059669" : "#DC2626" }} />
+            </div>
 
-          <div>
-            <p className="label-text">MACD Value</p>
-            <div className="flex items-center gap-2">
-              <p
-                className="text-lg font-mono tracking-tight"
-                style={{ color: marketData.macd_value > 0 ? "#059669" : "#DC2626" }}
-                data-testid="macd-value"
-              >
-                {marketData.macd_value !== undefined && marketData.macd_value !== null
-                  ? marketData.macd_value.toFixed(4)
-                  : "—"}
-              </p>
+            {/* MACD */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-sm border border-gray-200">
+              <div>
+                <p className="label-text mb-1">MACD</p>
+                <p className="text-lg font-mono font-bold" style={{ color: marketData.macd_value > 0 ? "#059669" : "#DC2626" }} data-testid="macd-value">
+                  {marketData.macd_value !== undefined && marketData.macd_value !== null
+                    ? marketData.macd_value.toFixed(4)
+                    : "—"}
+                </p>
+              </div>
               {marketData.macd_value !== undefined && marketData.macd_value !== null && (
-                <Circle 
-                  className="w-2 h-2" 
-                  style={{ fill: marketData.macd_value > 0 ? "#059669" : "#DC2626", color: marketData.macd_value > 0 ? "#059669" : "#DC2626" }} 
-                />
+                <Circle className="w-4 h-4 flex-shrink-0" style={{ fill: marketData.macd_value > 0 ? "#059669" : "#DC2626", color: marketData.macd_value > 0 ? "#059669" : "#DC2626" }} />
               )}
             </div>
-          </div>
-
-          <div className="ml-auto text-right">
-            <p className="label-text">Signal Status</p>
-            <p className={`text-sm font-mono font-bold uppercase ${
-              marketData.signal_status === 'buy' ? 'text-green-600' :
-              marketData.signal_status === 'sell' ? 'text-red-600' :
-              'text-gray-600'
-            }`}>
-              {marketData.signal_status || "waiting"}
-            </p>
-            <p className="text-xs font-mono text-gray-500 mt-1">
-              {new Date().toLocaleTimeString("en-IN")}
-            </p>
           </div>
         </div>
 
