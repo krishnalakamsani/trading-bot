@@ -44,7 +44,7 @@ config = {
     # Profit Taking
     "target_points": 0,  # Target profit points (0 = disabled)
     # Signal & Indicator Settings
-    "indicator_type": "supertrend_macd",  # SuperTrend + MACD combined strategy
+    "indicator_type": "supertrend",  # Trading indicator (supertrend or supertrend_macd)
     "supertrend_period": 7,
     "supertrend_multiplier": 4,
     "macd_fast": 12,

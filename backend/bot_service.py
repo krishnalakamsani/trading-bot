@@ -143,7 +143,7 @@ def get_config() -> dict:
         "target_points": config['target_points'],
         "risk_per_trade": config.get('risk_per_trade', 0),
         # Indicator Settings
-        "indicator_type": config.get('indicator_type', 'supertrend_macd'),
+        "indicator_type": config.get('indicator_type', 'supertrend'),
         "supertrend_period": config.get('supertrend_period', 7),
         "supertrend_multiplier": config.get('supertrend_multiplier', 4),
         "macd_fast": config.get('macd_fast', 12),
