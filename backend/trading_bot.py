@@ -349,6 +349,19 @@ class TradingBot:
                                 f"ST={indicator_value:.2f} | MACD={macd_value:.4f} | "
                                 f"{signal_status}"
                             )
+                            
+                            # Save candle data for analysis
+                            from database import save_candle_data
+                            await save_candle_data(
+                                candle_number=candle_number,
+                                index_name=index_name,
+                                high=high,
+                                low=low,
+                                close=close,
+                                supertrend_value=indicator_value,
+                                macd_value=macd_value,
+                                signal_status=bot_state['signal_status']
+                            )
                         
                         if signal:
                             bot_state['last_supertrend_signal'] = signal
@@ -601,11 +614,6 @@ class TradingBot:
         
         if bot_state['daily_trades'] >= config['max_trades_per_day']:
             logger.info("[SIGNAL] Max daily trades reached (%d)", config['max_trades_per_day'])
-            return exited
-        
-        # ALWAYS require signal change before new entry (after any exit)
-        if self.last_signal == signal:
-            logger.info(f"[SIGNAL] Waiting for signal flip - Current: {signal}, Last: {self.last_signal}")
             return exited
         
         # Check min_trade_gap protection (optional)

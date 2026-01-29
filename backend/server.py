@@ -157,6 +157,13 @@ async def get_indices():
     return bot_service.get_available_indices_list()
 
 
+@api_router.get("/candles")
+async def get_candles(limit: int = Query(default=1000, le=10000), index_name: str = Query(default=None)):
+    """Get historical candle data for analysis"""
+    from database import get_candle_data
+    return await get_candle_data(limit=limit, index_name=index_name)
+
+
 @api_router.get("/timeframes")
 async def get_timeframes():
     """Get available timeframes"""

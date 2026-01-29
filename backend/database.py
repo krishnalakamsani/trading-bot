@@ -44,6 +44,21 @@ async def init_db():
                 value TEXT
             )
         ''')
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS candle_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT,
+                candle_number INTEGER,
+                index_name TEXT,
+                high REAL,
+                low REAL,
+                close REAL,
+                supertrend_value REAL,
+                macd_value REAL,
+                signal_status TEXT,
+                created_at TEXT
+            )
+        ''')
         await db.commit()
         
         # Migration: Add index_name column if it doesn't exist
@@ -242,3 +257,40 @@ async def get_trade_analytics() -> dict:
             },
             'trades': trades
         }
+async def save_candle_data(candle_number: int, index_name: str, high: float, low: float, close: float, 
+                          supertrend_value: float, macd_value: float, signal_status: str):
+    """Save candle data for analysis"""
+    try:
+        from datetime import datetime, timezone
+        timestamp = datetime.now(timezone.utc).isoformat()
+        
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                '''INSERT INTO candle_data 
+                   (timestamp, candle_number, index_name, high, low, close, supertrend_value, macd_value, signal_status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (timestamp, candle_number, index_name, high, low, close, supertrend_value, macd_value, signal_status, timestamp)
+            )
+            await db.commit()
+    except Exception as e:
+        logger.error(f"[DB] Error saving candle data: {e}")
+
+async def get_candle_data(limit: int = 1000, index_name: str = None):
+    """Retrieve candle data for analysis"""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            
+            if index_name:
+                query = f'SELECT * FROM candle_data WHERE index_name = ? ORDER BY candle_number DESC LIMIT {limit}'
+                async with db.execute(query, (index_name,)) as cursor:
+                    rows = await cursor.fetchall()
+            else:
+                query = f'SELECT * FROM candle_data ORDER BY candle_number DESC LIMIT {limit}'
+                async with db.execute(query) as cursor:
+                    rows = await cursor.fetchall()
+            
+            return [dict(row) for row in reversed(rows)]  # Return in ascending order
+    except Exception as e:
+        logger.error(f"[DB] Error retrieving candle data: {e}")
+        return []
