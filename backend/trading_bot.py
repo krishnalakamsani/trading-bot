@@ -597,16 +597,18 @@ class TradingBot:
             if position_type == 'CE' and st_direction == -1:  # Holding CE but ST flipped RED
                 exit_price = bot_state['current_option_ltp']
                 pnl = (exit_price - self.entry_price) * qty
-                logger.info("[SIGNAL] SuperTrend flip RED - Exiting CE")
+                logger.info("[SIGNAL] SuperTrend flip RED - Exiting CE, will enter PE")
                 await self.close_position(exit_price, pnl, "SuperTrend Reversal")
-                return True
+                exited = True
+                # Continue to enter opposite position (PE)
             
-            if position_type == 'PE' and st_direction == 1:  # Holding PE but ST flipped GREEN
+            elif position_type == 'PE' and st_direction == 1:  # Holding PE but ST flipped GREEN
                 exit_price = bot_state['current_option_ltp']
                 pnl = (exit_price - self.entry_price) * qty
-                logger.info("[SIGNAL] SuperTrend flip GREEN - Exiting PE")
+                logger.info("[SIGNAL] SuperTrend flip GREEN - Exiting PE, will enter CE")
                 await self.close_position(exit_price, pnl, "SuperTrend Reversal")
-                return True
+                exited = True
+                # Continue to enter opposite position (CE)
         
         # Check if new trade allowed
         if self.current_position:
