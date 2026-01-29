@@ -1,6 +1,6 @@
 import React, { useContext, useState } from "react";
 import { AppContext } from "@/App";
-import { Play, Square, XCircle, RefreshCw, ChevronDown } from "lucide-react";
+import { Play, Square, XCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";

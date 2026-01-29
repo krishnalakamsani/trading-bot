@@ -46,16 +46,10 @@ async def squareoff_position() -> dict:
 def get_bot_status() -> dict:
     """Get current bot status with market hour validation"""
     from utils import is_market_open, get_ist_time
-    import logging
-    
-    logger = logging.getLogger(__name__)
     
     ist = get_ist_time()
     market_is_open = is_market_open()
-    
-    # Debug logging for market status
     is_weekday = ist.weekday() < 5  # 0-4 = Mon-Fri, 5-6 = Sat-Sun
-    hour_in_range = 9 <= ist.hour <= 15 or (ist.hour == 15 and ist.minute <= 30)
     
     logger.debug(f"[STATUS] Market check: Weekday={is_weekday}, Time={ist.strftime('%H:%M')}, Open={market_is_open}")
     
