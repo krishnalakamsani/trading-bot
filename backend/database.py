@@ -82,8 +82,7 @@ async def load_config():
                 for key, value in rows:
                     if key in config:
                         # Integer fields
-                        if key in ['order_qty', 'max_trades_per_day', 'candle_interval', 'supertrend_period', 'min_trade_gap', 
-                                    'macd_fast', 'macd_slow', 'macd_signal']:
+                        if key in ['order_qty', 'max_trades_per_day', 'candle_interval', 'supertrend_period', 'min_trade_gap']:
                             config[key] = int(value)
                         # Float fields
                         elif key in ['daily_max_loss', 'initial_stoploss', 'max_loss_per_trade', 'trail_start_profit', 'trail_step', 'target_points', 'risk_per_trade', 'supertrend_multiplier']:
@@ -93,17 +92,6 @@ async def load_config():
                             config[key] = value.lower() in ('true', '1', 'yes')
                         else:
                             config[key] = value
-            
-            # Migration: Update old indicator_type values
-            if config.get('indicator_type') == 'supertrend':
-                logger.warning(f"[DB] Found old indicator_type='supertrend', migrating to 'supertrend_macd'")
-                config['indicator_type'] = 'supertrend_macd'
-                await db.execute(
-                    'INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)',
-                    ('indicator_type', 'supertrend_macd')
-                )
-                await db.commit()
-                logger.info("[DB] Migrated indicator_type from 'supertrend' to 'supertrend_macd'")
     except Exception as e:
         logger.error(f"Error loading config: {e}")
 

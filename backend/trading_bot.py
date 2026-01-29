@@ -10,7 +10,7 @@ import random
 from config import bot_state, config, DB_PATH
 from indices import get_index_config, round_to_strike
 from utils import get_ist_time, is_market_open, can_take_new_trade, should_force_squareoff, format_timeframe
-from indicators import SuperTrend, MACD, SuperTrendMACD
+from indicators import SuperTrend, MACD
 from dhan_api import DhanAPI
 from database import save_trade, update_trade_exit
 
@@ -44,25 +44,13 @@ class TradingBot:
         return False
     
     def _initialize_indicator(self):
-        """Initialize indicator based on config"""
+        """Initialize SuperTrend indicator"""
         try:
-            indicator_type = config.get('indicator_type', 'supertrend')
-            
-            if indicator_type == 'supertrend_macd':
-                self.indicator = SuperTrendMACD(
-                    supertrend_period=config['supertrend_period'],
-                    supertrend_mult=config['supertrend_multiplier'],
-                    macd_fast=config['macd_fast'],
-                    macd_slow=config['macd_slow'],
-                    macd_signal=config['macd_signal']
-                )
-                logger.info(f"[SIGNAL] SuperTrend + MACD initialized")
-            else:  # supertrend
-                self.indicator = SuperTrend(
-                    period=config['supertrend_period'],
-                    multiplier=config['supertrend_multiplier']
-                )
-                logger.info(f"[SIGNAL] SuperTrend initialized")
+            self.indicator = SuperTrend(
+                period=config['supertrend_period'],
+                multiplier=config['supertrend_multiplier']
+            )
+            logger.info(f"[SIGNAL] SuperTrend initialized")
         except Exception as e:
             logger.error(f"[ERROR] Failed to initialize indicator: {e}")
             # Fallback to SuperTrend

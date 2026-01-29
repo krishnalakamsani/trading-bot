@@ -43,13 +43,9 @@ config = {
     "trail_step": 0,  # Trailing step size (0 = disabled)
     # Profit Taking
     "target_points": 0,  # Target profit points (0 = disabled)
-    # Signal & Indicator Settings
-    "indicator_type": "supertrend",  # Trading indicator (supertrend or supertrend_macd)
+    # Signal & Indicator Settings (SuperTrend only)
     "supertrend_period": 7,
     "supertrend_multiplier": 4,
-    "macd_fast": 12,
-    "macd_slow": 26,
-    "macd_signal": 9,
     "candle_interval": 5,  # seconds (default 5s)
     "selected_index": "NIFTY",  # Default index
     # Trade protection settings
