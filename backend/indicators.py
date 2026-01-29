@@ -423,18 +423,12 @@ class SuperTrendMACD:
         self.supertrend = SuperTrend(period=supertrend_period, multiplier=supertrend_mult)
         self.macd = MACD(fast=macd_fast, slow=macd_slow, signal=macd_signal)
         self.last_st_direction = None  # Track last direction to detect flips
-        self.st_flip_signal = None  # Track the signal when ST flipped
-        self.histogram = []  # Track MACD histogram
-        self.candles_since_flip = 0  # Count candles since flip
-        self.flip_confirmation_window = 3  # Check MACD for next 3 candles after flip
     
     def reset(self):
         """Reset both indicators"""
         self.supertrend.reset()
         self.macd.reset()
         self.last_st_direction = None
-        self.st_flip_signal = None
-        self.histogram = []
         self.candles_since_flip = 0
     
     def add_candle(self, high, low, close):
@@ -477,8 +471,6 @@ class SuperTrendMACD:
         
         # Calculate histogram
         histogram = macd_line - macd_signal_line
-        self.histogram.append(histogram)
-        
         # Check if SuperTrend direction changed
         current_direction = self.supertrend.direction
         direction_changed = False
@@ -490,52 +482,25 @@ class SuperTrendMACD:
             # Direction flip detected
             direction_changed = True
             self.last_st_direction = current_direction
-            self.st_flip_signal = "GREEN" if current_direction == 1 else "RED"
-            self.candles_since_flip = 0  # Reset counter on new flip
         
-        # Increment candle counter (only if not the flip candle itself)
-        if not direction_changed and self.st_flip_signal is not None:
-            self.candles_since_flip += 1
-        
-        # Determine final signal
+        # Determine final signal - only check MACD when SuperTrend flips
         final_signal = None
         
         if direction_changed:
-            # SuperTrend just flipped - check MACD confirmation on flip candle
-            if self.st_flip_signal == "GREEN":
-                # For GREEN (bullish): all 3 MACD values must be positive
-                if macd_line > 0 and macd_signal_line > 0 and histogram > 0:
+            # SuperTrend just flipped - check if MACD is green (positive) or red (negative)
+            if current_direction == 1:
+                # Flipped to GREEN (bullish) - check if MACD is positive
+                if macd_line > 0:
                     final_signal = "GREEN"
-                    logger.info(f"[SIGNAL] SuperTrend flipped GREEN + MACD confirmed on candle 0 (line={macd_line:.4f}, signal={macd_signal_line:.4f}, hist={histogram:.4f})")
+                    logger.info(f"[SIGNAL] SuperTrend flipped GREEN + MACD confirmed (macd={macd_line:.4f})")
                 else:
-                    logger.debug(f"[SIGNAL] SuperTrend flipped GREEN but MACD not aligned on candle 0 (line={macd_line:.4f}, signal={macd_signal_line:.4f}, hist={histogram:.4f})")
-            elif self.st_flip_signal == "RED":
-                # For RED (bearish): all 3 MACD values must be negative
-                if macd_line < 0 and macd_signal_line < 0 and histogram < 0:
+                    logger.debug(f"[SIGNAL] SuperTrend flipped GREEN but MACD not positive (macd={macd_line:.4f})")
+            elif current_direction == -1:
+                # Flipped to RED (bearish) - check if MACD is negative
+                if macd_line < 0:
                     final_signal = "RED"
-                    logger.info(f"[SIGNAL] SuperTrend flipped RED + MACD confirmed on candle 0 (line={macd_line:.4f}, signal={macd_signal_line:.4f}, hist={histogram:.4f})")
+                    logger.info(f"[SIGNAL] SuperTrend flipped RED + MACD confirmed (macd={macd_line:.4f})")
                 else:
-                    logger.debug(f"[SIGNAL] SuperTrend flipped RED but MACD not aligned on candle 0 (line={macd_line:.4f}, signal={macd_signal_line:.4f}, hist={histogram:.4f})")
-        else:
-            # SuperTrend hasn't flipped - check MACD only within 3-candle window
-            if self.st_flip_signal is not None and self.candles_since_flip <= self.flip_confirmation_window:
-                if self.st_flip_signal == "GREEN":
-                    # Still waiting for GREEN confirmation within 3-candle window
-                    if macd_line > 0 and macd_signal_line > 0 and histogram > 0:
-                        final_signal = "GREEN"
-                        logger.info(f"[SIGNAL] GREEN signal confirmed on candle {self.candles_since_flip} (line={macd_line:.4f}, signal={macd_signal_line:.4f}, hist={histogram:.4f})")
-                    else:
-                        logger.debug(f"[CANDLE {self.candles_since_flip}] GREEN confirmation window: MACD not aligned (line={macd_line:.4f}, signal={macd_signal_line:.4f}, hist={histogram:.4f})")
-                elif self.st_flip_signal == "RED":
-                    # Still waiting for RED confirmation within 3-candle window
-                    if macd_line < 0 and macd_signal_line < 0 and histogram < 0:
-                        final_signal = "RED"
-                        logger.info(f"[SIGNAL] RED signal confirmed on candle {self.candles_since_flip} (line={macd_line:.4f}, signal={macd_signal_line:.4f}, hist={histogram:.4f})")
-                    else:
-                        logger.debug(f"[CANDLE {self.candles_since_flip}] RED confirmation window: MACD not aligned (line={macd_line:.4f}, signal={macd_signal_line:.4f}, hist={histogram:.4f})")
-            elif self.st_flip_signal is not None and self.candles_since_flip > self.flip_confirmation_window:
-                # Outside confirmation window - stop checking, reset flip signal to avoid continuous processing
-                logger.debug(f"[SIGNAL] Closed 3-candle confirmation window for {self.st_flip_signal}. No confirmation received.")
-                self.st_flip_signal = None
+                    logger.debug(f"[SIGNAL] SuperTrend flipped RED but MACD not negative (macd={macd_line:.4f})")
         
         return st_value, final_signal, macd_line
