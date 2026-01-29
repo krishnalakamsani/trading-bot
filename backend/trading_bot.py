@@ -463,8 +463,8 @@ class TradingBot:
         trail_start = config.get('trail_start_profit', 0)
         trail_step = config.get('trail_step', 0)
         
-        if trail_start <= 0 or trail_step <= 0:
-            return  # Trailing disabled
+        if trail_start == 0 or trail_step == 0:
+            return  # Trailing disabled (0 = disabled)
         
         # Only start trailing after profit reaches trail_start_profit
         if profit_points < trail_start:
