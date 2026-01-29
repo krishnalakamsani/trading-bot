@@ -63,7 +63,7 @@ manager = ConnectionManager()
 async def lifespan(app: FastAPI):
     await init_db()
     await load_config()
-    logger.info(f"[STARTUP] Database initialized, config loaded. indicator_type={config.get('indicator_type')}")
+    logger.info(f"[STARTUP] Database initialized, config loaded. Index={config.get('selected_index', 'NIFTY')}, Indicator=SuperTrend")
     yield
     logger.info("[SHUTDOWN] Server shutting down")
 
