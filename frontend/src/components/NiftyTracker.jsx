@@ -52,7 +52,7 @@ const NiftyTracker = () => {
     }
   }, [marketData.ltp, marketData.supertrend_value]);
 
-  const isGreen = marketData.supertrend_signal === "GREEN";
+  const isGreen = marketData.ltp > marketData.supertrend_value;
   const signalColor = isGreen ? "#059669" : "#DC2626";
   const selectedIndex = config.selected_index || "NIFTY";
   const candleInterval = botStatus.candle_interval || config.candle_interval || 5;
