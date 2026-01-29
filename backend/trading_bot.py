@@ -342,7 +342,10 @@ class TradingBot:
                             
                             # Always log candle close with indicator values
                             indicator_name = config.get('indicator_type', 'supertrend_macd')
-                            signal_status = f"Signal={signal}" if signal else "Waiting for MACD confirmation"
+                            if signal:
+                                signal_status = f"Signal={signal}"
+                            else:
+                                signal_status = "No signal yet"
                             logger.info(
                                 f"[CANDLE CLOSE #{candle_number}] {index_name} | "
                                 f"H={high:.2f} L={low:.2f} C={close:.2f} | "
@@ -625,16 +628,19 @@ class TradingBot:
                 return exited
         
         # Enter new position
+        if not signal:
+            logger.debug("[SIGNAL] No signal generated, skipping entry")
+            return exited
+        
         option_type = 'PE' if signal == 'RED' else 'CE'
         atm_strike = round_to_strike(index_ltp, index_name)
         
         # Log signal details
         logger.info(
-            f"[SIGNAL] {signal} | "
+            f"[ENTRY] Taking {option_type} | {signal} Signal | "
             f"Index: {index_name} | "
             f"LTP: {index_ltp:.2f} | "
             f"ATM Strike: {atm_strike} | "
-            f"Option: {option_type} | "
             f"SuperTrend: {bot_state['supertrend_value']:.2f}"
         )
         

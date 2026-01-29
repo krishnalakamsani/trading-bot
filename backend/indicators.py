@@ -459,17 +459,19 @@ class SuperTrendMACD:
         if self.last_st_direction is None:
             # First candle - just track direction
             self.last_st_direction = current_direction
+            logger.debug(f"[ST] First candle - Direction initialized to: {current_direction} (1=GREEN, -1=RED)")
         elif self.last_st_direction != current_direction:
             # Direction flip detected - generate entry signal immediately
+            logger.info(f"[ST] Direction changed from {self.last_st_direction} to {current_direction}")
             self.last_st_direction = current_direction
             
             if current_direction == 1:
                 # SuperTrend flipped to GREEN (uptrend)
                 final_signal = "GREEN"
-                logger.info(f"[SIGNAL] SuperTrend flipped GREEN - Take CE Entry (ST={st_value:.2f})")
+                logger.info(f"[SIGNAL] ✓ SuperTrend flipped GREEN - Take CE Entry (ST={st_value:.2f})")
             elif current_direction == -1:
                 # SuperTrend flipped to RED (downtrend)
                 final_signal = "RED"
-                logger.info(f"[SIGNAL] SuperTrend flipped RED - Take PE Entry (ST={st_value:.2f})")
+                logger.info(f"[SIGNAL] ✓ SuperTrend flipped RED - Take PE Entry (ST={st_value:.2f})")
         
         return st_value, final_signal, macd_line
