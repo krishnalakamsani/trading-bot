@@ -786,7 +786,7 @@ class TradingBot:
             # CRITICAL: Verify order was actually filled (not just placed)
             # For live orders, Dhan API might take time to update order list, so use longer timeout
             order_id = result.get('orderId')
-            fill_status = await self.dhan.verify_order_filled(order_id, security_id, qty, timeout_seconds=30)  # Increased from 15 to 30 seconds
+            fill_status = await self.dhan.verify_order_filled(order_id, security_id, qty, timeout_seconds=60)  # Increased from 30 to 60 seconds for slower Dhan API
             
             if not fill_status.get('filled'):
                 logger.error(f"[ERROR] Entry order NOT filled | Status: {fill_status.get('status')} | Message: {fill_status.get('message')}")
