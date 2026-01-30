@@ -640,6 +640,8 @@ class TradingBot:
                 logger.warning(f"[SIGNAL] ✗ REVERSAL: SuperTrend flipped RED - Exiting CE position IMMEDIATELY | P&L=₹{pnl:.2f}")
                 await self.close_position(exit_price, pnl, "SuperTrend Reversal")
                 exited = True
+                # Clear last_signal to allow immediate re-entry on opposite signal (RED)
+                self.last_signal = None
                 # Continue to enter opposite position (PE)
             
             elif position_type == 'PE' and st_direction == 1:  # Holding PE but ST flipped GREEN
@@ -648,6 +650,8 @@ class TradingBot:
                 logger.warning(f"[SIGNAL] ✗ REVERSAL: SuperTrend flipped GREEN - Exiting PE position IMMEDIATELY | P&L=₹{pnl:.2f}")
                 await self.close_position(exit_price, pnl, "SuperTrend Reversal")
                 exited = True
+                # Clear last_signal to allow immediate re-entry on opposite signal (GREEN)
+                self.last_signal = None
                 # Continue to enter opposite position (CE)
         
         # Check if new trade allowed
