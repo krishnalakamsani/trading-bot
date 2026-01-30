@@ -683,7 +683,6 @@ class TradingBot:
         )
         
         await self.enter_position(option_type, atm_strike, index_ltp)
-        self.last_signal = signal
         self.last_trade_time = datetime.now()
         
         return exited
@@ -785,8 +784,9 @@ class TradingBot:
                 return
             
             # CRITICAL: Verify order was actually filled (not just placed)
+            # For live orders, Dhan API might take time to update order list, so use longer timeout
             order_id = result.get('orderId')
-            fill_status = await self.dhan.verify_order_filled(order_id, security_id, qty, timeout_seconds=15)
+            fill_status = await self.dhan.verify_order_filled(order_id, security_id, qty, timeout_seconds=30)  # Increased from 15 to 30 seconds
             
             if not fill_status.get('filled'):
                 logger.error(f"[ERROR] Entry order NOT filled | Status: {fill_status.get('status')} | Message: {fill_status.get('message')}")
@@ -828,6 +828,10 @@ class TradingBot:
         bot_state['entry_price'] = self.entry_price
         bot_state['daily_trades'] += 1
         bot_state['current_option_ltp'] = entry_price
+        
+        # ONLY set last_signal AFTER position is successfully confirmed open
+        self.last_signal = option_type[0].upper() + 'E'  # 'CE' -> 'C', 'PE' -> 'P'
+        self.last_signal = 'GREEN' if option_type == 'CE' else 'RED'
         
         # Save to database
         await save_trade({

@@ -356,8 +356,11 @@ class DhanAPI:
         except Exception as e:
             logger.error(f"Error fetching positions: {e}")
         return []    
-    async def verify_order_filled(self, order_id: str, security_id: str, expected_qty: int, timeout_seconds: int = 10) -> dict:
+    async def verify_order_filled(self, order_id: str, security_id: str, expected_qty: int, timeout_seconds: int = 30) -> dict:
         """Verify if an order was actually filled
+        
+        For LIVE mode: Dhan API takes time to update order list, so retry with longer timeout
+        For PAPER mode: Returns quickly
         
         Returns:
             {
@@ -372,8 +375,10 @@ class DhanAPI:
         try:
             import asyncio
             start_time = datetime.now(timezone.utc)
+            retry_count = 0
             
             while True:
+                retry_count += 1
                 # Check order status
                 try:
                     orders = self.dhan.get_order_list()
@@ -385,7 +390,7 @@ class DhanAPI:
                                 average_price = float(order.get('averagePrice', 0))
                                 
                                 if status == 'FILLED':
-                                    logger.info(f"[ORDER] Order {order_id} FILLED | Qty: {filled_qty} | Avg Price: {average_price}")
+                                    logger.info(f"[ORDER] ✓ Order {order_id} FILLED (attempt #{retry_count}) | Qty: {filled_qty} | Avg Price: {average_price}")
                                     return {
                                         "filled": True,
                                         "order_id": order_id,
@@ -397,8 +402,9 @@ class DhanAPI:
                                 elif status in ['PENDING', 'OPEN']:
                                     # Still pending, wait and retry
                                     elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+                                    logger.debug(f"[ORDER] Waiting for {order_id} to fill... Status: {status} (attempt #{retry_count}, {elapsed:.1f}s elapsed)")
                                     if elapsed > timeout_seconds:
-                                        logger.warning(f"[ORDER] Order {order_id} timeout after {timeout_seconds}s | Status: {status}")
+                                        logger.warning(f"[ORDER] Order {order_id} timeout after {timeout_seconds}s | Status: {status} (attempt #{retry_count})")
                                         return {
                                             "filled": False,
                                             "order_id": order_id,
@@ -410,7 +416,7 @@ class DhanAPI:
                                     await asyncio.sleep(0.5)
                                     continue
                                 elif status == 'REJECTED':
-                                    logger.error(f"[ORDER] Order {order_id} REJECTED | Reason: {order.get('reason', 'Unknown')}")
+                                    logger.error(f"[ORDER] ✗ Order {order_id} REJECTED (attempt #{retry_count}) | Reason: {order.get('reason', 'Unknown')}")
                                     return {
                                         "filled": False,
                                         "order_id": order_id,
@@ -420,7 +426,7 @@ class DhanAPI:
                                         "message": f"Order rejected: {order.get('reason', 'Unknown')}"
                                     }
                                 elif status == 'CANCELLED':
-                                    logger.warning(f"[ORDER] Order {order_id} CANCELLED")
+                                    logger.warning(f"[ORDER] ✗ Order {order_id} CANCELLED (attempt #{retry_count})")
                                     return {
                                         "filled": False,
                                         "order_id": order_id,
@@ -430,14 +436,15 @@ class DhanAPI:
                                         "message": "Order was cancelled"
                                     }
                 except Exception as e:
-                    logger.error(f"[ORDER] Error checking order status: {e}")
+                    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+                    logger.debug(f"[ORDER] Error checking order status: {e} (attempt #{retry_count}, {elapsed:.1f}s elapsed)")
                     await asyncio.sleep(0.5)
                     continue
                 
-                # Order not found in list yet (might be too recent)
+                # Order not found in list yet (might be too recent in live mode)
                 elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
                 if elapsed > timeout_seconds:
-                    logger.warning(f"[ORDER] Order {order_id} not found after {timeout_seconds}s")
+                    logger.warning(f"[ORDER] ✗ Order {order_id} not found in system after {timeout_seconds}s (attempt #{retry_count}) - may still be pending")
                     return {
                         "filled": False,
                         "order_id": order_id,
