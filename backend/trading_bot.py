@@ -10,7 +10,8 @@ import random
 from config import bot_state, config, DB_PATH
 from indices import get_index_config, round_to_strike
 from utils import get_ist_time, is_market_open, can_take_new_trade, should_force_squareoff, format_timeframe
-from indicators import SuperTrend, MACD
+from indicators import SuperTrend, MACD, ADX
+from strategy_agent import AgentAction, AgentInputs, STAdxMacdAgent
 from dhan_api import DhanAPI
 from database import save_trade, update_trade_exit
 
@@ -29,6 +30,11 @@ class TradingBot:
         self.trailing_sl = None
         self.highest_profit = 0.0
         self.indicator = None  # Will hold selected indicator
+        self.macd_indicator = None
+        self.adx_indicator = None
+        self.strategy_agent = STAdxMacdAgent()
+        self._last_macd_value = None
+        self._last_st_direction = None
         self.last_exit_candle_time = None
         self.last_trade_time = None  # For min_trade_gap protection
         self.last_signal = None  # For trade_only_on_flip protection
@@ -50,17 +56,29 @@ class TradingBot:
                 period=config['supertrend_period'],
                 multiplier=config['supertrend_multiplier']
             )
+            self.macd_indicator = MACD()  # Defaults: 12/26/9
+            self.adx_indicator = ADX()    # Default: 14
             logger.info(f"[SIGNAL] SuperTrend initialized")
         except Exception as e:
             logger.error(f"[ERROR] Failed to initialize indicator: {e}")
             # Fallback to SuperTrend
             self.indicator = SuperTrend(period=7, multiplier=4)
+            self.macd_indicator = MACD()
+            self.adx_indicator = ADX()
             logger.info(f"[SIGNAL] SuperTrend (fallback) initialized")
     
     def reset_indicator(self):
         """Reset the selected indicator"""
         if self.indicator:
             self.indicator.reset()
+        if self.macd_indicator:
+            self.macd_indicator.reset()
+        if self.adx_indicator:
+            self.adx_indicator.reset()
+
+        self.strategy_agent.reset_session("RESET")
+        self._last_macd_value = None
+        self._last_st_direction = None
             logger.info(f"[SIGNAL] Indicator reset: {config.get('indicator_type', 'supertrend')}")
     
     def is_within_trading_hours(self) -> bool:
@@ -244,7 +262,7 @@ class TradingBot:
         """Main trading loop"""
         logger.info("[BOT] Trading loop started")
         candle_start_time = datetime.now()
-        high, low, close = 0, float('inf'), 0
+        open_price, high, low, close = 0.0, 0, float('inf'), 0
         candle_number = 0
         
         while self.running:
@@ -263,6 +281,7 @@ class TradingBot:
                     self.last_trade_time = None
                     self.last_signal = None
                     candle_number = 0
+                    self.reset_indicator()
                     logger.info("[BOT] Daily reset at 9:15 AM")
                 
                 # Force square-off at 3:25 PM
@@ -328,6 +347,8 @@ class TradingBot:
                 # Update candle data
                 index_ltp = bot_state['index_ltp']
                 if index_ltp > 0:
+                    if open_price == 0.0:
+                        open_price = float(index_ltp)
                     if index_ltp > high:
                         high = index_ltp
                     if index_ltp < low:
@@ -353,73 +374,106 @@ class TradingBot:
                     candle_number += 1
                     
                     if high > 0 and low < float('inf'):
-                        indicator_value, signal = self.indicator.add_candle(high, low, close)
-                        macd_value = 0.0  # MACD not used in SuperTrend-only mode
-                        
-                        # Always update SuperTrend value
-                        if indicator_value:
-                            bot_state['supertrend_value'] = indicator_value if isinstance(indicator_value, (int, float)) else str(indicator_value)
-                            bot_state['macd_value'] = 0.0  # MACD not used in SuperTrend-only mode
-                            
-                            # Update signal status (GREEN="buy", RED="sell", None="waiting")
-                            if signal == "GREEN":
-                                bot_state['signal_status'] = "buy"
-                            elif signal == "RED":
-                                bot_state['signal_status'] = "sell"
-                            else:
-                                bot_state['signal_status'] = "waiting"
-                            
-                            # Always log candle close with indicator values
-                            if signal:
-                                signal_status = f"Signal={signal}"
-                            else:
-                                signal_status = "No signal yet"
-                            logger.info(
-                                f"[CANDLE CLOSE #{candle_number}] {index_name} | "
-                                f"H={high:.2f} L={low:.2f} C={close:.2f} | "
-                                f"ST={indicator_value:.2f} | "
-                                f"{signal_status}"
-                            )
-                            
-                            # Save candle data for analysis
-                            from database import save_candle_data
-                            await save_candle_data(
-                                candle_number=candle_number,
-                                index_name=index_name,
-                                high=high,
-                                low=low,
-                                close=close,
-                                supertrend_value=indicator_value,
-                                macd_value=macd_value,
-                                signal_status=bot_state['signal_status']
-                            )
-                        
-                        if signal:
-                            bot_state['last_supertrend_signal'] = signal
-                            
-                            # Check trailing SL/Target on candle close ONLY
-                            if self.current_position:
-                                option_ltp = bot_state['current_option_ltp']
-                                sl_hit = await self.check_trailing_sl_on_close(option_ltp)
-                                
-                                if sl_hit:
-                                    self.last_exit_candle_time = current_candle_time
-                            
-                            # Trading logic - entries/exits based on SuperTrend signal
-                            can_trade = True
-                            if self.last_exit_candle_time:
-                                time_since_exit = (current_candle_time - self.last_exit_candle_time).total_seconds()
-                                if time_since_exit < candle_interval:
-                                    can_trade = False
-                            
-                            if can_trade:
-                                exited = await self.process_signal_on_close(signal, close)
-                                if exited:
-                                    self.last_exit_candle_time = current_candle_time
+                        prev_st_direction = self._last_st_direction
+
+                        indicator_value, _ = self.indicator.add_candle(high, low, close)
+                        st_direction = getattr(self.indicator, 'direction', None)
+
+                        supertrend_flipped = (
+                            prev_st_direction is not None
+                            and st_direction in (1, -1)
+                            and st_direction != prev_st_direction
+                        )
+                        if st_direction in (1, -1):
+                            self._last_st_direction = st_direction
+
+                        macd_previous = self._last_macd_value
+                        macd_current, _ = self.macd_indicator.add_candle(high, low, close) if self.macd_indicator else (None, None)
+                        if macd_current is not None:
+                            self._last_macd_value = macd_current
+
+                        adx_value, _ = self.adx_indicator.add_candle(high, low, close) if self.adx_indicator else (None, None)
+
+                        # Update state for UI/analytics (safe even if indicators not ready)
+                        if isinstance(indicator_value, (int, float)):
+                            bot_state['supertrend_value'] = float(indicator_value)
+                        if isinstance(macd_current, (int, float)):
+                            bot_state['macd_value'] = float(macd_current)
+
+                        if st_direction == 1:
+                            bot_state['last_supertrend_signal'] = "GREEN"
+                            bot_state['signal_status'] = "buy"
+                        elif st_direction == -1:
+                            bot_state['last_supertrend_signal'] = "RED"
+                            bot_state['signal_status'] = "sell"
+                        else:
+                            bot_state['signal_status'] = "waiting"
+
+                        st_dir_label = "GREEN" if st_direction == 1 else "RED" if st_direction == -1 else "NA"
+                        flip_label = "FLIP" if supertrend_flipped else "NOFLIP"
+                        macd_log = f"{macd_current:.4f}" if isinstance(macd_current, (int, float)) else "NA"
+                        adx_log = f"{adx_value:.2f}" if isinstance(adx_value, (int, float)) else "NA"
+                        st_log = f"{indicator_value:.2f}" if isinstance(indicator_value, (int, float)) else "NA"
+
+                        logger.info(
+                            f"[CANDLE CLOSE #{candle_number}] {index_name} | "
+                            f"O={open_price:.2f} H={high:.2f} L={low:.2f} C={close:.2f} | "
+                            f"ST={st_log}({st_dir_label},{flip_label}) | ADX={adx_log} | MACD={macd_log}"
+                        )
+
+                        # Save candle data for analysis
+                        from database import save_candle_data
+                        await save_candle_data(
+                            candle_number=candle_number,
+                            index_name=index_name,
+                            high=high,
+                            low=low,
+                            close=close,
+                            supertrend_value=indicator_value if isinstance(indicator_value, (int, float)) else 0.0,
+                            macd_value=macd_current if isinstance(macd_current, (int, float)) else 0.0,
+                            signal_status=bot_state['signal_status']
+                        )
+
+                        # Check trailing SL/Target on candle close (additional safety)
+                        if self.current_position:
+                            option_ltp = bot_state['current_option_ltp']
+                            sl_hit = await self.check_trailing_sl_on_close(option_ltp)
+                            if sl_hit:
+                                self.last_exit_candle_time = current_candle_time
+
+                        # Strategy agent decision (strategy-only)
+                        inputs = AgentInputs(
+                            timestamp=datetime.now(timezone.utc).isoformat(),
+                            open=float(open_price),
+                            high=float(high),
+                            low=float(low),
+                            close=float(close),
+                            supertrend_direction=st_direction if st_direction in (1, -1) else None,
+                            supertrend_flipped=bool(supertrend_flipped),
+                            adx_value=float(adx_value) if isinstance(adx_value, (int, float)) else None,
+                            macd_current=float(macd_current) if isinstance(macd_current, (int, float)) else None,
+                            macd_previous=float(macd_previous) if isinstance(macd_previous, (int, float)) else None,
+                            in_position=self.current_position is not None,
+                            current_position_side=(self.current_position.get('option_type') if self.current_position else None),
+                        )
+
+                        action = self.strategy_agent.decide(inputs)
+
+                        # Prevent immediate re-trade within same candle after exit
+                        can_trade = True
+                        if self.last_exit_candle_time:
+                            time_since_exit = (current_candle_time - self.last_exit_candle_time).total_seconds()
+                            if time_since_exit < candle_interval:
+                                can_trade = False
+
+                        if can_trade:
+                            exited = await self.process_agent_action_on_close(action, close)
+                            if exited:
+                                self.last_exit_candle_time = current_candle_time
                     
                     # Reset candle for next period
                     candle_start_time = datetime.now()
-                    high, low, close = 0, float('inf'), 0
+                    open_price, high, low, close = 0.0, 0, float('inf'), 0
                 
                 # Handle paper mode simulation
                 if self.current_position:
@@ -699,6 +753,62 @@ class TradingBot:
         await self.enter_position(option_type, atm_strike, index_ltp)
         self.last_trade_time = datetime.now()
         
+        return exited
+
+    async def process_agent_action_on_close(self, action: AgentAction, index_ltp: float) -> bool:
+        """Map strategy-agent action to existing enter/exit plumbing."""
+        if action == AgentAction.HOLD:
+            return False
+
+        exited = False
+        index_name = config['selected_index']
+        index_config = get_index_config(index_name)
+        qty = config['order_qty'] * index_config['lot_size']
+
+        if action == AgentAction.EXIT:
+            if not self.current_position:
+                return False
+
+            exit_price = bot_state['current_option_ltp']
+            pnl = (exit_price - self.entry_price) * qty
+            logger.info(f"[AGENT] EXIT | Reason=AgentDecision | P&L=₹{pnl:.2f}")
+            await self.close_position(exit_price, pnl, "Agent Exit")
+            return True
+
+        # ENTER actions
+        if self.current_position:
+            return False
+
+        if not can_take_new_trade():
+            return False
+
+        if bot_state['daily_trades'] >= config['max_trades_per_day']:
+            logger.info(f"[AGENT] Entry blocked - max daily trades reached ({config['max_trades_per_day']})")
+            return False
+
+        min_gap = config.get('min_trade_gap', 0)
+        if min_gap > 0 and self.last_trade_time:
+            time_since_last = (datetime.now() - self.last_trade_time).total_seconds()
+            if time_since_last < min_gap:
+                logger.debug(f"[AGENT] Entry blocked - min trade gap not met ({time_since_last:.1f}s < {min_gap}s)")
+                return False
+
+        option_type = None
+        if action == AgentAction.ENTER_CE:
+            option_type = 'CE'
+        elif action == AgentAction.ENTER_PE:
+            option_type = 'PE'
+        else:
+            return False
+
+        atm_strike = round_to_strike(index_ltp, index_name)
+        logger.info(
+            f"[AGENT] ENTER {option_type} | Index={index_name} | LTP={index_ltp:.2f} | ATM={atm_strike} | "
+            f"ST={bot_state['supertrend_value']:.2f} | MACD={bot_state['macd_value']:.4f}"
+        )
+
+        await self.enter_position(option_type, atm_strike, index_ltp)
+        self.last_trade_time = datetime.now()
         return exited
     
     async def enter_position(self, option_type: str, strike: int, index_ltp: float):
