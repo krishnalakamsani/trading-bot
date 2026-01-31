@@ -14,10 +14,12 @@ from typing import List
 
 # Local imports
 from config import ROOT_DIR, bot_state, config
-from models import ConfigUpdate, BacktestRequest
-from database import init_db, load_config, get_trades, get_trade_analytics, get_candle_data_for_backtest, get_candle_data_stats
+from models import ConfigUpdate, BacktestRequest, DhanCandleImportRequest
+from database import init_db, load_config, get_trades, get_trade_analytics, get_candle_data_for_backtest, get_candle_data_stats, bulk_insert_candle_data
 import bot_service
 from backtest import run_backtest
+from dhan_history import DhanHistoryClient
+from indices import get_index_config
 
 # Configure logging
 logging.basicConfig(
@@ -173,6 +175,62 @@ async def get_candles(limit: int = Query(default=1000, le=10000), index_name: st
 async def get_candles_stats():
     """Get candle DB stats for debugging backtest/replay."""
     return await get_candle_data_stats()
+
+
+@api_router.post("/candles/import/dhan")
+async def import_candles_from_dhan(req: DhanCandleImportRequest):
+    """Fetch historical intraday candles from Dhan and store to candle_data.
+
+    This enables backtesting even when markets are closed.
+    """
+    access_token = (config.get('dhan_access_token') or '').strip()
+    if not access_token:
+        raise HTTPException(status_code=400, detail="Missing dhan_access_token in config")
+
+    index_name = (req.index_name or 'NIFTY').strip().upper()
+    idx_cfg = get_index_config(index_name)
+    security_id = int(idx_cfg['security_id'])
+    exchange_segment = str(idx_cfg.get('exchange_segment') or 'IDX_I')
+
+    # Dhan historical API expects instrument type
+    instrument = 'INDEX'
+
+    client = DhanHistoryClient(access_token)
+    candles = await client.fetch_intraday_ohlc(
+        security_id=security_id,
+        exchange_segment=exchange_segment,
+        instrument=instrument,
+        interval_minutes=req.interval_minutes,
+        from_date=req.from_date,
+        to_date=req.to_date,
+        oi=False,
+    )
+
+    if not candles:
+        raise HTTPException(status_code=400, detail="Dhan returned 0 candles for the requested range")
+
+    inserted = await bulk_insert_candle_data(
+        index_name=index_name,
+        candles=candles,
+        replace_existing_range=bool(req.replace_existing_range),
+    )
+    stats = await get_candle_data_stats()
+    return {
+        "status": "success",
+        "index_name": index_name,
+        "requested": {
+            "interval_minutes": req.interval_minutes,
+            "from_date": req.from_date,
+            "to_date": req.to_date,
+        },
+        "fetched": len(candles),
+        "inserted": inserted,
+        "db": stats,
+        "sample": {
+            "first": candles[0],
+            "last": candles[-1],
+        },
+    }
 
 
 @api_router.get("/timeframes")

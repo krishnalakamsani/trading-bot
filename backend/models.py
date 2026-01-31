@@ -94,3 +94,11 @@ class BacktestRequest(BaseModel):
     agent_wave_reset_macd_abs: Optional[float] = None
 
     close_open_position_at_end: bool = True
+
+
+class DhanCandleImportRequest(BaseModel):
+    index_name: str = "NIFTY"
+    interval_minutes: int = 5  # 1,5,15,25,60 supported by Dhan
+    from_date: str  # "YYYY-MM-DD HH:MM:SS"
+    to_date: str    # "YYYY-MM-DD HH:MM:SS"
+    replace_existing_range: bool = False

@@ -360,6 +360,71 @@ async def save_candle_data(candle_number: int, index_name: str, high: float, low
     except Exception as e:
         logger.error(f"[DB] Error saving candle data: {e}")
 
+
+async def bulk_insert_candle_data(
+    *,
+    index_name: str,
+    candles: list,
+    replace_existing_range: bool = False,
+):
+    """Bulk insert candles into candle_data.
+
+    Expects each candle as dict with keys: timestamp (ISO), epoch (int), high, low, close.
+    Uses `epoch` as candle_number to preserve sort order.
+
+    If replace_existing_range is True, deletes existing rows for index_name between
+    first and last candle timestamps (inclusive).
+    """
+    if not candles:
+        return 0
+
+    # Ensure chronological order for range deletes
+    candles_sorted = sorted(candles, key=lambda x: x.get('epoch') or 0)
+    start_ts = candles_sorted[0].get('timestamp')
+    end_ts = candles_sorted[-1].get('timestamp')
+
+    rows = []
+    for c in candles_sorted:
+        ts = c.get('timestamp')
+        epoch = int(c.get('epoch') or 0)
+        high = float(c.get('high'))
+        low = float(c.get('low'))
+        close = float(c.get('close'))
+        rows.append(
+            (
+                ts,
+                epoch,
+                index_name,
+                high,
+                low,
+                close,
+                0.0,
+                0.0,
+                'historical',
+                ts,
+            )
+        )
+
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            if replace_existing_range and start_ts and end_ts:
+                await db.execute(
+                    "DELETE FROM candle_data WHERE index_name = ? AND timestamp >= ? AND timestamp <= ?",
+                    (index_name, start_ts, end_ts),
+                )
+
+            await db.executemany(
+                '''INSERT INTO candle_data
+                   (timestamp, candle_number, index_name, high, low, close, supertrend_value, macd_value, signal_status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                rows,
+            )
+            await db.commit()
+        return len(rows)
+    except Exception as e:
+        logger.error(f"[DB] Error bulk inserting candle data: {e}")
+        return 0
+
 async def get_candle_data(limit: int = 1000, index_name: str = None):
     """Retrieve candle data for analysis"""
     try:
