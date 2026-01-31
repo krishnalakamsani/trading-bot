@@ -6,6 +6,8 @@ import asyncio
 from datetime import datetime, timezone, timedelta
 import logging
 import random
+import json
+from pathlib import Path
 
 from config import bot_state, config, DB_PATH
 from indices import get_index_config, round_to_strike
@@ -32,13 +34,20 @@ class TradingBot:
         self.indicator = None  # Will hold selected indicator
         self.macd_indicator = None
         self.adx_indicator = None
-        self.strategy_agent = STAdxMacdAgent()
+        self.strategy_agent = STAdxMacdAgent(
+            adx_min=float(config.get('agent_adx_min', 20.0)),
+            wave_reset_macd_abs=float(config.get('agent_wave_reset_macd_abs', 0.05)),
+        )
         self._last_macd_value = None
         self._last_st_direction = None
+        self._agent_state_path = Path(DB_PATH).parent / 'agent_state.json'
+        self._last_persisted_agent_state = None
         self.last_exit_candle_time = None
         self.last_trade_time = None  # For min_trade_gap protection
-        self.last_signal = None  # For trade_only_on_flip protection
         self._initialize_indicator()
+
+        # Keep bot_state strategy_mode in sync for API/WS
+        bot_state['strategy_mode'] = config.get('strategy_mode', 'agent')
     
     def initialize_dhan(self):
         """Initialize Dhan API connection"""
@@ -76,10 +85,51 @@ class TradingBot:
         if self.adx_indicator:
             self.adx_indicator.reset()
 
+        self.apply_strategy_config()
         self.strategy_agent.reset_session("RESET")
+        self._try_load_agent_state()
         self._last_macd_value = None
         self._last_st_direction = None
             logger.info(f"[SIGNAL] Indicator reset: {config.get('indicator_type', 'supertrend')}")
+
+    def apply_strategy_config(self) -> None:
+        """Apply config-driven strategy settings to the agent instance."""
+        # Keep bot_state updated for API/WS
+        bot_state['strategy_mode'] = config.get('strategy_mode', 'agent')
+
+        self.strategy_agent.adx_min = float(config.get('agent_adx_min', self.strategy_agent.adx_min))
+        self.strategy_agent.wave_reset_macd_abs = float(
+            config.get('agent_wave_reset_macd_abs', self.strategy_agent.wave_reset_macd_abs)
+        )
+
+    def _try_load_agent_state(self) -> None:
+        if not config.get('persist_agent_state', True):
+            return
+        try:
+            if not self._agent_state_path.exists():
+                return
+            raw = self._agent_state_path.read_text(encoding='utf-8')
+            state = json.loads(raw)
+            self.strategy_agent.load_state_dict(state)
+            self._last_persisted_agent_state = self.strategy_agent.to_state_dict()
+            logger.info(f"[AGENT] State restored from {self._agent_state_path}")
+        except Exception as e:
+            logger.warning(f"[AGENT] Failed to restore agent state: {e}")
+
+    def _try_persist_agent_state(self) -> None:
+        if not config.get('persist_agent_state', True):
+            return
+        try:
+            state = self.strategy_agent.to_state_dict()
+            if state == self._last_persisted_agent_state:
+                return
+
+            tmp_path = self._agent_state_path.with_suffix('.tmp')
+            tmp_path.write_text(json.dumps(state, indent=2), encoding='utf-8')
+            tmp_path.replace(self._agent_state_path)
+            self._last_persisted_agent_state = state
+        except Exception as e:
+            logger.warning(f"[AGENT] Failed to persist agent state: {e}")
     
     def is_within_trading_hours(self) -> bool:
         """Check if current time allows new entries
@@ -117,7 +167,6 @@ class TradingBot:
         self.running = True
         bot_state['is_running'] = True
         self.reset_indicator()
-        self.last_signal = None
         self.task = asyncio.create_task(self.run_loop())
         
         index_name = config['selected_index']
@@ -243,14 +292,6 @@ class TradingBot:
         if pnl < 0 and abs(pnl) > bot_state['max_drawdown']:
             bot_state['max_drawdown'] = abs(pnl)
         
-        # Track the signal at exit - require signal change before next entry
-        # If we exited CE position, last signal was GREEN
-        # If we exited PE position, last signal was RED
-        if option_type == 'CE':
-            self.last_signal = 'GREEN'
-        elif option_type == 'PE':
-            self.last_signal = 'RED'
-        
         self.current_position = None
         self.entry_price = 0
         self.trailing_sl = None
@@ -279,7 +320,6 @@ class TradingBot:
                     bot_state['max_drawdown'] = 0.0
                     self.last_exit_candle_time = None
                     self.last_trade_time = None
-                    self.last_signal = None
                     candle_number = 0
                     self.reset_indicator()
                     logger.info("[BOT] Daily reset at 9:15 AM")
@@ -394,11 +434,16 @@ class TradingBot:
 
                         adx_value, _ = self.adx_indicator.add_candle(high, low, close) if self.adx_indicator else (None, None)
 
+                        if isinstance(adx_value, (int, float)):
+                            bot_state['adx_value'] = float(adx_value)
+
                         # Update state for UI/analytics (safe even if indicators not ready)
                         if isinstance(indicator_value, (int, float)):
                             bot_state['supertrend_value'] = float(indicator_value)
                         if isinstance(macd_current, (int, float)):
                             bot_state['macd_value'] = float(macd_current)
+
+                        bot_state['strategy_mode'] = config.get('strategy_mode', 'agent')
 
                         if st_direction == 1:
                             bot_state['last_supertrend_signal'] = "GREEN"
@@ -442,22 +487,39 @@ class TradingBot:
                                 self.last_exit_candle_time = current_candle_time
 
                         # Strategy agent decision (strategy-only)
-                        inputs = AgentInputs(
-                            timestamp=datetime.now(timezone.utc).isoformat(),
-                            open=float(open_price),
-                            high=float(high),
-                            low=float(low),
-                            close=float(close),
-                            supertrend_direction=st_direction if st_direction in (1, -1) else None,
-                            supertrend_flipped=bool(supertrend_flipped),
-                            adx_value=float(adx_value) if isinstance(adx_value, (int, float)) else None,
-                            macd_current=float(macd_current) if isinstance(macd_current, (int, float)) else None,
-                            macd_previous=float(macd_previous) if isinstance(macd_previous, (int, float)) else None,
-                            in_position=self.current_position is not None,
-                            current_position_side=(self.current_position.get('option_type') if self.current_position else None),
-                        )
+                        strategy_mode = config.get('strategy_mode', 'agent')
+                        action = AgentAction.HOLD
 
-                        action = self.strategy_agent.decide(inputs)
+                        if strategy_mode == 'supertrend':
+                            # Simple fallback: trade only on ST flip
+                            if self.current_position is None:
+                                if supertrend_flipped and st_direction == 1:
+                                    action = AgentAction.ENTER_CE
+                                elif supertrend_flipped and st_direction == -1:
+                                    action = AgentAction.ENTER_PE
+                            else:
+                                if supertrend_flipped:
+                                    action = AgentAction.EXIT
+                        else:
+                            # Default: ST + ADX + MACD agent
+                            self.apply_strategy_config()
+                            inputs = AgentInputs(
+                                timestamp=datetime.now(timezone.utc).isoformat(),
+                                open=float(open_price),
+                                high=float(high),
+                                low=float(low),
+                                close=float(close),
+                                supertrend_direction=st_direction if st_direction in (1, -1) else None,
+                                supertrend_flipped=bool(supertrend_flipped),
+                                adx_value=float(adx_value) if isinstance(adx_value, (int, float)) else None,
+                                macd_current=float(macd_current) if isinstance(macd_current, (int, float)) else None,
+                                macd_previous=float(macd_previous) if isinstance(macd_previous, (int, float)) else None,
+                                in_position=self.current_position is not None,
+                                current_position_side=(self.current_position.get('option_type') if self.current_position else None),
+                            )
+                            action = self.strategy_agent.decide(inputs)
+
+                        self._try_persist_agent_state()
 
                         # Prevent immediate re-trade within same candle after exit
                         can_trade = True
@@ -526,6 +588,8 @@ class TradingBot:
                 "index_ltp": bot_state['index_ltp'],
                 "supertrend_signal": bot_state['last_supertrend_signal'],
                 "supertrend_value": bot_state['supertrend_value'],
+                "macd_value": bot_state.get('macd_value', 0.0),
+                "adx_value": bot_state.get('adx_value', 0.0),
                 "position": bot_state['current_position'],
                 "entry_price": bot_state['entry_price'],
                 "current_option_ltp": bot_state['current_option_ltp'],
@@ -536,6 +600,7 @@ class TradingBot:
                 "mode": bot_state['mode'],
                 "selected_index": config['selected_index'],
                 "candle_interval": config['candle_interval'],
+                "strategy_mode": bot_state.get('strategy_mode', config.get('strategy_mode', 'agent')),
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         })
@@ -673,88 +738,6 @@ class TradingBot:
         
         return False
     
-    async def process_signal_on_close(self, signal: str, index_ltp: float) -> bool:
-        """Process SuperTrend signal on candle close"""
-        exited = False
-        index_name = config['selected_index']
-        index_config = get_index_config(index_name)
-        qty = config['order_qty'] * index_config['lot_size']
-        
-        # Check for exit on SuperTrend direction reversal (PRIMARY exit trigger)
-        # Exit based on SuperTrend direction change - this is the critical signal
-        if self.current_position:
-            position_type = self.current_position.get('option_type', '')
-            # Get current SuperTrend direction from indicator
-            st_direction = getattr(self.indicator, 'direction', 0)
-            
-            # CRITICAL: EXIT ON SIGNAL REVERSAL
-            if position_type == 'CE' and st_direction == -1:  # Holding CE but ST flipped RED
-                exit_price = bot_state['current_option_ltp']
-                pnl = (exit_price - self.entry_price) * qty
-                logger.warning(f"[SIGNAL] ✗ REVERSAL: SuperTrend flipped RED - Exiting CE position IMMEDIATELY | P&L=₹{pnl:.2f}")
-                await self.close_position(exit_price, pnl, "SuperTrend Reversal")
-                exited = True
-                # Clear last_signal to allow immediate re-entry on opposite signal (RED)
-                self.last_signal = None
-                # Continue to enter opposite position (PE)
-            
-            elif position_type == 'PE' and st_direction == 1:  # Holding PE but ST flipped GREEN
-                exit_price = bot_state['current_option_ltp']
-                pnl = (exit_price - self.entry_price) * qty
-                logger.warning(f"[SIGNAL] ✗ REVERSAL: SuperTrend flipped GREEN - Exiting PE position IMMEDIATELY | P&L=₹{pnl:.2f}")
-                await self.close_position(exit_price, pnl, "SuperTrend Reversal")
-                exited = True
-                # Clear last_signal to allow immediate re-entry on opposite signal (GREEN)
-                self.last_signal = None
-                # Continue to enter opposite position (CE)
-        
-        # Check if new trade allowed
-        if self.current_position:
-            return exited
-        
-        if not can_take_new_trade():
-            return exited
-        
-        if bot_state['daily_trades'] >= config['max_trades_per_day']:
-            logger.info(f"[SIGNAL] Max daily trades reached ({config['max_trades_per_day']})")
-            return exited
-        
-        # Check min_trade_gap protection (optional)
-        min_gap = config.get('min_trade_gap', 0)
-        if min_gap > 0 and self.last_trade_time:
-            time_since_last = (datetime.now() - self.last_trade_time).total_seconds()
-            if time_since_last < min_gap:
-                logger.debug(f"[SIGNAL] Skipping - min trade gap not met ({time_since_last:.1f}s < {min_gap}s)")
-                return exited
-        
-        # Enter new position
-        if not signal:
-            logger.debug("[SIGNAL] No signal generated, skipping entry")
-            return exited
-        
-        # CRITICAL: Require signal FLIP before re-entering
-        # After any exit (reversal or forced square-off), wait for opposite signal
-        if self.last_signal and signal == self.last_signal:
-            logger.info(f"[ENTRY] ✗ Skipping - Waiting for signal flip | Current={signal}, Last={self.last_signal}")
-            return exited
-        
-        option_type = 'PE' if signal == 'RED' else 'CE'
-        atm_strike = round_to_strike(index_ltp, index_name)
-        
-        # Log signal details
-        logger.info(
-            f"[ENTRY] Taking {option_type} | {signal} Signal | "
-            f"Index: {index_name} | "
-            f"LTP: {index_ltp:.2f} | "
-            f"ATM Strike: {atm_strike} | "
-            f"SuperTrend: {bot_state['supertrend_value']:.2f}"
-        )
-        
-        await self.enter_position(option_type, atm_strike, index_ltp)
-        self.last_trade_time = datetime.now()
-        
-        return exited
-
     async def process_agent_action_on_close(self, action: AgentAction, index_ltp: float) -> bool:
         """Map strategy-agent action to existing enter/exit plumbing."""
         if action == AgentAction.HOLD:
@@ -932,11 +915,7 @@ class TradingBot:
         bot_state['entry_price'] = self.entry_price
         bot_state['daily_trades'] += 1
         bot_state['current_option_ltp'] = entry_price
-        
-        # ONLY set last_signal AFTER position is successfully confirmed open
-        self.last_signal = option_type[0].upper() + 'E'  # 'CE' -> 'C', 'PE' -> 'P'
-        self.last_signal = 'GREEN' if option_type == 'CE' else 'RED'
-        
+
         # Save to database in background - don't wait for DB commit
         asyncio.create_task(save_trade({
             'trade_id': trade_id,

@@ -1,6 +1,13 @@
 import unittest
 
-from backend.strategy_agent import AgentAction, AgentInputs, STAdxMacdAgent
+import os
+import sys
+
+# Repo layout: Docker/runtime executes from backend/ where modules are flat.
+# For local unittest runs from repo root, add backend/ to sys.path.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "backend")))
+
+from strategy_agent import AgentAction, AgentInputs, STAdxMacdAgent
 
 
 class TestSTAdxMacdAgent(unittest.TestCase):

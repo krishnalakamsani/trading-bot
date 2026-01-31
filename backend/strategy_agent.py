@@ -63,6 +63,23 @@ class STAdxMacdAgent:
         self.wave_lock = False
         self.last_trade_side = None
 
+    def to_state_dict(self) -> dict:
+        return {
+            "wave_lock": bool(self.wave_lock),
+            "last_trade_side": self.last_trade_side,
+        }
+
+    def load_state_dict(self, state: dict) -> None:
+        if not isinstance(state, dict):
+            return
+        wave_lock = state.get("wave_lock")
+        last_trade_side = state.get("last_trade_side")
+
+        if isinstance(wave_lock, bool):
+            self.wave_lock = wave_lock
+        if last_trade_side in ("CE", "PE", None):
+            self.last_trade_side = last_trade_side
+
     def decide(self, inputs: AgentInputs) -> AgentAction:
         # ---- WAVE-LOCK RESET (MANDATORY, runs every candle) ----
         if self.wave_lock and inputs.macd_current is not None:

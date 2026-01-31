@@ -19,6 +19,12 @@ class ConfigUpdate(BaseModel):
     min_trade_gap: Optional[int] = None  # Minimum seconds between trades
     trade_only_on_flip: Optional[bool] = None  # Only trade on SuperTrend flip
 
+    # Strategy / Agent
+    strategy_mode: Optional[str] = None  # 'agent' | 'supertrend'
+    agent_adx_min: Optional[float] = None
+    agent_wave_reset_macd_abs: Optional[float] = None
+    persist_agent_state: Optional[bool] = None
+
 class BotStatus(BaseModel):
     is_running: bool
     mode: str

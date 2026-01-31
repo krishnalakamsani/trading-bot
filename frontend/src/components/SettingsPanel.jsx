@@ -33,6 +33,16 @@ const SettingsPanel = ({ onClose }) => {
   const [targetPoints, setTargetPoints] = useState(config.target_points || 0);
   const [riskPerTrade, setRiskPerTrade] = useState(config.risk_per_trade || 0);
 
+  // Strategy / Agent
+  const [strategyMode, setStrategyMode] = useState(config.strategy_mode || "agent");
+  const [agentAdxMin, setAgentAdxMin] = useState(config.agent_adx_min ?? 20.0);
+  const [agentWaveResetMacdAbs, setAgentWaveResetMacdAbs] = useState(
+    config.agent_wave_reset_macd_abs ?? 0.05
+  );
+  const [persistAgentState, setPersistAgentState] = useState(
+    config.persist_agent_state ?? true
+  );
+
   const [saving, setSaving] = useState(false);
   const isFirstRender = React.useRef(true);
 
@@ -48,6 +58,11 @@ const SettingsPanel = ({ onClose }) => {
       setTrailStep(config?.trail_step ?? 0);
       setTargetPoints(config?.target_points || 0);
       setRiskPerTrade(config?.risk_per_trade || 0);
+
+      setStrategyMode(config?.strategy_mode || "agent");
+      setAgentAdxMin(config?.agent_adx_min ?? 20.0);
+      setAgentWaveResetMacdAbs(config?.agent_wave_reset_macd_abs ?? 0.05);
+      setPersistAgentState(config?.persist_agent_state ?? true);
       isFirstRender.current = false;
     }
   }, []); // Empty dependency array - only run once on mount
@@ -78,6 +93,17 @@ const SettingsPanel = ({ onClose }) => {
       trail_step: trailStep,
       target_points: targetPoints,
       risk_per_trade: riskPerTrade,
+    });
+    setSaving(false);
+  };
+
+  const handleSaveStrategy = async () => {
+    setSaving(true);
+    await updateConfig({
+      strategy_mode: strategyMode,
+      agent_adx_min: agentAdxMin,
+      agent_wave_reset_macd_abs: agentWaveResetMacdAbs,
+      persist_agent_state: persistAgentState,
     });
     setSaving(false);
   };
@@ -113,7 +139,7 @@ const SettingsPanel = ({ onClose }) => {
         </DialogHeader>
 
         <Tabs defaultValue="credentials" className="w-full overflow-visible">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="credentials" className="text-xs">
               <Key className="w-3 h-3 mr-1" />
               API Keys
@@ -121,6 +147,10 @@ const SettingsPanel = ({ onClose }) => {
             <TabsTrigger value="risk" className="text-xs">
               <ShieldCheck className="w-3 h-3 mr-1" />
               Risk
+            </TabsTrigger>
+            <TabsTrigger value="strategy" className="text-xs">
+              <Settings className="w-3 h-3 mr-1" />
+              Strategy
             </TabsTrigger>
           </TabsList>
 
@@ -349,6 +379,86 @@ const SettingsPanel = ({ onClose }) => {
                 <Save className="w-3 h-3 mr-1" />
                 {saving ? "Saving..." : "Save Parameters"}
               </Button>
+            </div>
+          </TabsContent>
+
+          {/* Strategy Tab */}
+          <TabsContent value="strategy" className="space-y-4 mt-4 overflow-visible">
+            <div className="space-y-4">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-sm text-xs text-blue-800">
+                <strong>Strategy Mode</strong>: Choose how entries/exits are generated.
+              </div>
+
+              <div className="space-y-2">
+                <Label>Mode</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={strategyMode === "agent" ? "default" : "outline"}
+                    size="sm"
+                    className="rounded-sm"
+                    onClick={() => setStrategyMode("agent")}
+                  >
+                    Agent (ST + ADX + MACD)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={strategyMode === "supertrend" ? "default" : "outline"}
+                    size="sm"
+                    className="rounded-sm"
+                    onClick={() => setStrategyMode("supertrend")}
+                  >
+                    SuperTrend Flip
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="agent-adx-min">Agent ADX Min</Label>
+                  <Input
+                    id="agent-adx-min"
+                    type="number"
+                    value={agentAdxMin}
+                    onChange={(e) => setAgentAdxMin(parseFloat(e.target.value) || 0)}
+                    className="mt-1 rounded-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Blocks entries when ADX is below this value.</p>
+                </div>
+
+                <div>
+                  <Label htmlFor="agent-wave-reset">Wave Reset | abs(MACD) &lt;</Label>
+                  <Input
+                    id="agent-wave-reset"
+                    type="number"
+                    step="0.01"
+                    value={agentWaveResetMacdAbs}
+                    onChange={(e) => setAgentWaveResetMacdAbs(parseFloat(e.target.value) || 0)}
+                    className="mt-1 rounded-sm"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Resets wave-lock when momentum decays.</p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-sm">
+                <div>
+                  <p className="text-sm font-medium">Persist Agent State</p>
+                  <p className="text-xs text-gray-500">Keeps wave-lock across container restarts.</p>
+                </div>
+                <Switch checked={persistAgentState} onCheckedChange={setPersistAgentState} />
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleSaveStrategy}
+                  disabled={saving}
+                  size="sm"
+                  className="rounded-sm btn-active"
+                >
+                  <Save className="w-3 h-3 mr-1" />
+                  {saving ? "Saving..." : "Save Strategy"}
+                </Button>
+              </div>
             </div>
           </TabsContent>
         </Tabs>

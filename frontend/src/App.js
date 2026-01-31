@@ -40,6 +40,9 @@ function App() {
     ltp: 0,
     supertrend_signal: null,
     supertrend_value: 0,
+    macd_value: 0,
+    adx_value: 0,
+    strategy_mode: "agent",
     selected_index: "NIFTY"
   });
   const [position, setPosition] = useState(null);
@@ -66,7 +69,13 @@ function App() {
     selected_index: "NIFTY",
     candle_interval: 5,
     lot_size: 65,
-    strike_interval: 50
+    strike_interval: 50,
+
+    // Strategy / Agent
+    strategy_mode: "agent",
+    agent_adx_min: 20.0,
+    agent_wave_reset_macd_abs: 0.05,
+    persist_agent_state: true
   });
   const [indices, setIndices] = useState([]);
   const [timeframes, setTimeframes] = useState([]);
@@ -132,6 +141,9 @@ function App() {
               ltp: update.index_ltp,
               supertrend_signal: update.supertrend_signal,
               supertrend_value: update.supertrend_value,
+              macd_value: update.macd_value ?? 0,
+              adx_value: update.adx_value ?? 0,
+              strategy_mode: update.strategy_mode ?? currentConfig.strategy_mode ?? "agent",
               selected_index: update.selected_index
             });
             setBotStatus(prev => ({

@@ -21,12 +21,14 @@ bot_state = {
     "index_ltp": 0.0,
     "supertrend_value": 0.0,
     "macd_value": 0.0,  # MACD line value
+    "adx_value": 0.0,
     "signal_status": "waiting",  # waiting, buy (GREEN), sell (RED)
     "trailing_sl": None,
     "entry_price": 0.0,
     "current_option_ltp": 0.0,
     "max_drawdown": 0.0,
     "selected_index": "NIFTY",  # Current selected index
+    "strategy_mode": "agent",
 }
 
 # Configuration (can be updated from frontend)
@@ -46,6 +48,15 @@ config = {
     # Signal & Indicator Settings (SuperTrend only)
     "supertrend_period": 7,
     "supertrend_multiplier": 4,
+    # Strategy selection
+    # - agent: ST + ADX + MACD agent decides
+    # - supertrend: simple ST flip logic (fallback)
+    "strategy_mode": "agent",
+    # Agent tuning
+    "agent_adx_min": 20.0,
+    "agent_wave_reset_macd_abs": 0.05,
+    # Persist agent state (wave_lock/last_trade_side) across container restarts
+    "persist_agent_state": True,
     "candle_interval": 5,  # seconds (default 5s)
     "selected_index": "NIFTY",  # Default index
     # Trade protection settings

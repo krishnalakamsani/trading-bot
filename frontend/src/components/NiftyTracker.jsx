@@ -56,6 +56,7 @@ const NiftyTracker = () => {
   const signalColor = isGreen ? "#059669" : "#DC2626";
   const selectedIndex = config.selected_index || "NIFTY";
   const candleInterval = botStatus.candle_interval || config.candle_interval || 5;
+  const strategyMode = marketData.strategy_mode || config.strategy_mode || "agent";
 
   return (
     <div className="terminal-card" data-testid="nifty-tracker">
@@ -99,6 +100,30 @@ const NiftyTracker = () => {
               </p>
             </div>
             <Circle className="w-4 h-4 flex-shrink-0" style={{ fill: isGreen ? "#059669" : "#DC2626", color: isGreen ? "#059669" : "#DC2626" }} />
+          </div>
+
+          {/* ADX */}
+          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-sm border border-gray-200">
+            <div>
+              <p className="label-text text-xs mb-1">ADX</p>
+              <p className="text-xl font-mono font-bold text-gray-900">
+                {typeof marketData.adx_value === "number" && marketData.adx_value > 0
+                  ? marketData.adx_value.toFixed(2)
+                  : "—"}
+              </p>
+            </div>
+          </div>
+
+          {/* MACD */}
+          <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-sm border border-gray-200">
+            <div>
+              <p className="label-text text-xs mb-1">MACD</p>
+              <p className="text-xl font-mono font-bold text-gray-900">
+                {typeof marketData.macd_value === "number" && marketData.macd_value !== 0
+                  ? marketData.macd_value.toFixed(4)
+                  : "—"}
+              </p>
+            </div>
           </div>
         </div>
 
@@ -160,7 +185,7 @@ const NiftyTracker = () => {
         {/* Info Bar */}
         <div className="mt-3 flex items-center justify-between text-xs text-gray-500 font-mono">
           <span>Timeframe: {formatTimeframe(candleInterval)}</span>
-          <span>SuperTrend(7, 4)</span>
+          <span>Strategy: {strategyMode}</span>
           <span>{priceHistory.length} candles</span>
         </div>
       </div>

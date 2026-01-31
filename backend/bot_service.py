@@ -79,7 +79,9 @@ def get_market_data() -> dict:
         "supertrend_signal": bot_state['last_supertrend_signal'],
         "supertrend_value": bot_state['supertrend_value'],
         "macd_value": bot_state['macd_value'],
+        "adx_value": bot_state.get('adx_value', 0.0),
         "signal_status": bot_state['signal_status'],
+        "strategy_mode": bot_state.get('strategy_mode', config.get('strategy_mode', 'agent')),
         "selected_index": config['selected_index'],
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
@@ -145,6 +147,12 @@ def get_config() -> dict:
         # Indicator Settings (SuperTrend only)
         "supertrend_period": config.get('supertrend_period', 7),
         "supertrend_multiplier": config.get('supertrend_multiplier', 4),
+
+        # Strategy / Agent
+        "strategy_mode": config.get('strategy_mode', 'agent'),
+        "agent_adx_min": config.get('agent_adx_min', 20.0),
+        "agent_wave_reset_macd_abs": config.get('agent_wave_reset_macd_abs', 0.05),
+        "persist_agent_state": config.get('persist_agent_state', True),
     }
 
 
@@ -206,6 +214,39 @@ async def update_config_values(updates: dict) -> dict:
         config['risk_per_trade'] = float(updates['risk_per_trade'])
         updated_fields.append('risk_per_trade')
         logger.info(f"[CONFIG] Risk per trade changed to: ₹{config['risk_per_trade']}")
+
+    # Strategy / Agent
+    if updates.get('strategy_mode') is not None:
+        mode = str(updates['strategy_mode']).strip().lower()
+        if mode in ('agent', 'supertrend'):
+            config['strategy_mode'] = mode
+            bot_state['strategy_mode'] = mode
+            updated_fields.append('strategy_mode')
+            logger.info(f"[CONFIG] Strategy mode changed to: {mode}")
+        else:
+            logger.warning(f"[CONFIG] Invalid strategy_mode: {mode}. Allowed: agent|supertrend")
+
+    if updates.get('agent_adx_min') is not None:
+        val = float(updates['agent_adx_min'])
+        config['agent_adx_min'] = max(0.0, min(100.0, val))
+        updated_fields.append('agent_adx_min')
+        logger.info(f"[CONFIG] Agent ADX min set to: {config['agent_adx_min']}")
+
+    if updates.get('agent_wave_reset_macd_abs') is not None:
+        val = float(updates['agent_wave_reset_macd_abs'])
+        config['agent_wave_reset_macd_abs'] = max(0.0, min(10.0, val))
+        updated_fields.append('agent_wave_reset_macd_abs')
+        logger.info(f"[CONFIG] Agent wave reset | abs(MACD) < {config['agent_wave_reset_macd_abs']}")
+
+    if updates.get('persist_agent_state') is not None:
+        config['persist_agent_state'] = bool(updates['persist_agent_state'])
+        updated_fields.append('persist_agent_state')
+        logger.info(f"[CONFIG] Persist agent state: {config['persist_agent_state']}")
+
+    # Apply strategy/agent config live (no restart required)
+    if any(k in updates for k in ('strategy_mode', 'agent_adx_min', 'agent_wave_reset_macd_abs', 'persist_agent_state')):
+        bot = get_trading_bot()
+        bot.apply_strategy_config()
         
     if updates.get('selected_index') is not None:
         new_index = updates['selected_index'].upper()
