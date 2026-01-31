@@ -41,8 +41,8 @@ function App() {
     supertrend_signal: null,
     supertrend_value: 0,
     macd_value: 0,
-    adx_value: 0,
-    strategy_mode: "agent",
+    macd_hist: 0,
+    strategy_mode: "st_macd_hist",
     selected_index: "NIFTY"
   });
   const [position, setPosition] = useState(null);
@@ -158,32 +158,26 @@ function App() {
               supertrend_signal: update.supertrend_signal,
               supertrend_value: update.supertrend_value,
               macd_value: update.macd_value ?? 0,
-              adx_value: update.adx_value ?? 0,
-              strategy_mode: update.strategy_mode ?? currentConfig.strategy_mode ?? "agent",
+              macd_hist: update.macd_hist ?? 0,
+              strategy_mode: update.strategy_mode ?? currentConfig.strategy_mode ?? "st_macd_hist",
               selected_index: update.selected_index
             });
 
-            // Keep the Strategy Status card consistent with WS indicator + agent updates
+            // Keep the Strategy Status card consistent with WS indicator updates
             if (
               update.strategy_mode ||
               update.macd_value !== undefined ||
-              update.adx_value !== undefined ||
+              update.macd_hist !== undefined ||
               update.supertrend_value !== undefined ||
-              update.agent_wave_lock !== undefined ||
-              update.agent_last_trade_side !== undefined
+              update.supertrend_signal !== undefined
             ) {
               setStrategyStatus((prev) => ({
                 ...(prev || {}),
                 strategy_mode: update.strategy_mode ?? prev?.strategy_mode,
-                agent_state: {
-                  ...(prev?.agent_state || {}),
-                  wave_lock: update.agent_wave_lock ?? prev?.agent_state?.wave_lock,
-                  last_trade_side: update.agent_last_trade_side ?? prev?.agent_state?.last_trade_side,
-                },
                 indicators: {
                   ...(prev?.indicators || {}),
                   macd_value: update.macd_value ?? prev?.indicators?.macd_value,
-                  adx_value: update.adx_value ?? prev?.indicators?.adx_value,
+                  macd_hist: update.macd_hist ?? prev?.indicators?.macd_hist,
                   supertrend_value: update.supertrend_value ?? prev?.indicators?.supertrend_value,
                 },
               }));

@@ -28,14 +28,7 @@ const Settings = () => {
   const [riskPerTrade, setRiskPerTrade] = useState(config.risk_per_trade || 0);
 
   // Strategy / Agent
-  const [strategyMode, setStrategyMode] = useState(config.strategy_mode || "agent");
-  const [agentAdxMin, setAgentAdxMin] = useState(config.agent_adx_min ?? 20.0);
-  const [agentWaveResetMacdAbs, setAgentWaveResetMacdAbs] = useState(
-    config.agent_wave_reset_macd_abs ?? 0.05
-  );
-  const [persistAgentState, setPersistAgentState] = useState(
-    config.persist_agent_state ?? true
-  );
+  const strategyMode = "st_macd_hist";
   const [bypassMarketHours, setBypassMarketHours] = useState(
     config.bypass_market_hours ?? false
   );
@@ -64,10 +57,6 @@ const Settings = () => {
       setTargetPoints(config?.target_points || 0);
       setRiskPerTrade(config?.risk_per_trade || 0);
 
-      setStrategyMode(config?.strategy_mode || "agent");
-      setAgentAdxMin(config?.agent_adx_min ?? 20.0);
-      setAgentWaveResetMacdAbs(config?.agent_wave_reset_macd_abs ?? 0.05);
-      setPersistAgentState(config?.persist_agent_state ?? true);
       setBypassMarketHours(config?.bypass_market_hours ?? false);
       isFirstRender.current = false;
     }
@@ -107,9 +96,6 @@ const Settings = () => {
     setSaving(true);
     await updateConfig({
       strategy_mode: strategyMode,
-      agent_adx_min: agentAdxMin,
-      agent_wave_reset_macd_abs: agentWaveResetMacdAbs,
-      persist_agent_state: persistAgentState,
       bypass_market_hours: bypassMarketHours,
     });
     setSaving(false);
@@ -384,70 +370,19 @@ const Settings = () => {
           <TabsContent value="strategy" className="space-y-4 mt-6 bg-white p-6 rounded-lg border border-gray-200">
             <div className="space-y-4">
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-sm text-xs text-blue-800">
-                <strong>Strategy Mode</strong>: Choose how entries/exits are generated.
+                <strong>Strategy</strong>: Fixed to <strong>SuperTrend + MACD Histogram</strong> on fixed ATM option candles (5s).
               </div>
 
-              <div className="space-y-2">
-                <Label>Mode</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={strategyMode === "agent" ? "default" : "outline"}
-                    size="sm"
-                    className="rounded-sm"
-                    onClick={() => setStrategyMode("agent")}
-                  >
-                    Agent (ST + ADX + MACD)
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={strategyMode === "supertrend" ? "default" : "outline"}
-                    size="sm"
-                    className="rounded-sm"
-                    onClick={() => setStrategyMode("supertrend")}
-                  >
-                    SuperTrend Flip
-                  </Button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="text-xs text-gray-600 space-y-1">
                 <div>
-                  <Label htmlFor="agent-adx-min">Agent ADX Min</Label>
-                  <Input
-                    id="agent-adx-min"
-                    type="number"
-                    value={agentAdxMin}
-                    onChange={(e) => setAgentAdxMin(parseFloat(e.target.value) || 0)}
-                    className="mt-1 rounded-sm"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Blocks entries when ADX is below this value.</p>
+                  Mode: <span className="font-mono">ST + MACD Histogram</span>
                 </div>
                 <div>
-                  <Label htmlFor="agent-wave-reset">Wave Reset | abs(MACD) &lt;</Label>
-                  <Input
-                    id="agent-wave-reset"
-                    type="number"
-                    step="0.01"
-                    value={agentWaveResetMacdAbs}
-                    onChange={(e) => setAgentWaveResetMacdAbs(parseFloat(e.target.value) || 0)}
-                    className="mt-1 rounded-sm"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Resets wave-lock when momentum decays.</p>
+                  Entry: <span className="font-mono">ST BUY</span> + <span className="font-mono">Hist &gt; 0.5</span> + <span className="font-mono">Hist increasing</span>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-sm">
                 <div>
-                  <p className="text-sm font-medium">Persist Agent State</p>
-                  <p className="text-xs text-gray-500">Keeps wave-lock across container restarts.</p>
+                  Exit: <span className="font-mono">ST reversal</span> OR <span className="font-mono">Hist &lt; 0</span> OR <span className="font-mono">Trailing SL</span> OR <span className="font-mono">Target</span>
                 </div>
-                <input
-                  type="checkbox"
-                  checked={persistAgentState}
-                  onChange={(e) => setPersistAgentState(e.target.checked)}
-                  className="h-4 w-4"
-                />
               </div>
 
               <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-sm">
