@@ -208,6 +208,21 @@ class TradingBot:
         """Pick and cache a fixed CE+PE contract for signal generation."""
         if self.fixed_ce_security_id and self.fixed_pe_security_id and self.fixed_option_strike and self.fixed_option_expiry:
             return True
+
+        # Simulation support: allow fixed-contract mode without broker connectivity.
+        if config.get('bypass_market_hours', False) and (not self.dhan) and index_ltp and index_ltp > 0:
+            strike = int(round_to_strike(index_ltp, index_name))
+            expiry = "SIM"
+            self.fixed_option_strike = strike
+            self.fixed_option_expiry = expiry
+            self.fixed_ce_security_id = f"SIM_{index_name}_{strike}_CE"
+            self.fixed_pe_security_id = f"SIM_{index_name}_{strike}_PE"
+            bot_state['fixed_option_strike'] = self.fixed_option_strike
+            bot_state['fixed_option_expiry'] = self.fixed_option_expiry
+            bot_state['fixed_ce_security_id'] = self.fixed_ce_security_id
+            bot_state['fixed_pe_security_id'] = self.fixed_pe_security_id
+            return True
+
         if not self.dhan:
             return False
         if not index_ltp or index_ltp <= 0:
@@ -470,7 +485,8 @@ class TradingBot:
                     await self.squareoff()
                 
                 # Check if trading is allowed
-                if not is_market_open():
+                market_open = is_market_open()
+                if not market_open and not config.get('bypass_market_hours', False):
                     await asyncio.sleep(5)
                     continue
                 
@@ -557,11 +573,10 @@ class TradingBot:
                             index_ltp = self.dhan.get_index_ltp(index_name)
                             if index_ltp > 0:
                                 bot_state['index_ltp'] = index_ltp
-                
-                # If no data from API (market closed or no credentials), simulate index movement for testing
-                if bot_state['index_ltp'] == 0 and config.get('bypass_market_hours', False):
+
+                # If no data from API (market closed or no credentials), simulate movement for testing
+                if (not market_open or not self.dhan) and config.get('bypass_market_hours', False):
                     # Initialize with realistic base value for index
-                    index_config = get_index_config(index_name)
                     if bot_state.get('simulated_base_price') is None:
                         if index_name == 'NIFTY':
                             bot_state['simulated_base_price'] = 23500.0
@@ -572,14 +587,45 @@ class TradingBot:
                         elif index_name == 'MIDCPNIFTY':
                             bot_state['simulated_base_price'] = 12500.0
                         else:
-                            bot_state['simulated_base_price'] = 70000.0  # SENSEX
-                    
-                    # Generate realistic tick movements (simulate market volatility)
-                    base = bot_state['simulated_base_price']
+                            bot_state['simulated_base_price'] = 70000.0
+
+                    # Generate realistic tick movements
                     tick_change = random.choice([-15, -10, -5, -2, 0, 2, 5, 10, 15])
                     bot_state['simulated_base_price'] += tick_change
-                    bot_state['index_ltp'] = round(bot_state['simulated_base_price'], 2)
-                    logger.debug(f"[TEST] Simulated {index_name} LTP: {bot_state['index_ltp']}")
+                    bot_state['index_ltp'] = round(float(bot_state['simulated_base_price']), 2)
+
+                    # In option_fixed mode, simulate CE/PE LTPs too (so candles + signals can be tested)
+                    if config.get('signal_source', 'index') == 'option_fixed':
+                        idx_ltp = float(bot_state['index_ltp'])
+                        await self._ensure_fixed_option_contract(index_name, idx_ltp)
+                        strike = self.fixed_option_strike or int(round_to_strike(idx_ltp, index_name))
+                        bot_state['fixed_option_strike'] = strike
+                        bot_state['fixed_option_expiry'] = self.fixed_option_expiry or "SIM"
+
+                        distance_from_atm = abs(idx_ltp - strike)
+                        time_decay_factor = max(0.0, 1.0 - (distance_from_atm / 500.0))
+                        time_value = 150.0 * time_decay_factor
+                        noise = random.choice([-0.20, -0.10, -0.05, 0, 0.05, 0.10, 0.20])
+
+                        ce_intrinsic = max(0.0, idx_ltp - strike)
+                        pe_intrinsic = max(0.0, strike - idx_ltp)
+                        ce_ltp = max(0.05, ce_intrinsic + time_value + noise)
+                        pe_ltp = max(0.05, pe_intrinsic + time_value + noise)
+
+                        ce_ltp = round(ce_ltp / 0.05) * 0.05
+                        pe_ltp = round(pe_ltp / 0.05) * 0.05
+                        bot_state['signal_ce_ltp'] = round(float(ce_ltp), 2)
+                        bot_state['signal_pe_ltp'] = round(float(pe_ltp), 2)
+
+                        # Keep position LTP in sync with the simulated signal LTP
+                        if self.current_position:
+                            pos_type = self.current_position.get('option_type')
+                            if pos_type == 'CE':
+                                bot_state['current_option_ltp'] = bot_state['signal_ce_ltp']
+                            elif pos_type == 'PE':
+                                bot_state['current_option_ltp'] = bot_state['signal_pe_ltp']
+                
+                # Note: simulation is handled above when bypass_market_hours is enabled.
                 
                 # Update candle data
                 index_ltp = bot_state['index_ltp']

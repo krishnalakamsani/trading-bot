@@ -19,6 +19,9 @@ class ConfigUpdate(BaseModel):
     min_trade_gap: Optional[int] = None  # Minimum seconds between trades
     trade_only_on_flip: Optional[bool] = None  # Only trade on SuperTrend flip
 
+    # Testing utilities
+    bypass_market_hours: Optional[bool] = None  # Allow bot to run after-hours using simulated LTPs
+
     # Strategy / Agent
     strategy_mode: Optional[str] = None  # 'agent' | 'supertrend'
     signal_source: Optional[str] = None  # 'index' | 'option_fixed'

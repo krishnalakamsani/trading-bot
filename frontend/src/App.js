@@ -79,6 +79,10 @@ function App() {
     agent_adx_min: 20.0,
     agent_wave_reset_macd_abs: 0.05,
     persist_agent_state: true
+    ,
+
+    // Testing utilities
+    bypass_market_hours: false
   });
   const [indices, setIndices] = useState([]);
   const [timeframes, setTimeframes] = useState([]);

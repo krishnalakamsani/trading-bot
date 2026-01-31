@@ -37,6 +37,9 @@ const Settings = () => {
   const [persistAgentState, setPersistAgentState] = useState(
     config.persist_agent_state ?? true
   );
+  const [bypassMarketHours, setBypassMarketHours] = useState(
+    config.bypass_market_hours ?? false
+  );
 
   const canChangeSignalSource = !botStatus?.is_running && !position?.has_position;
 
@@ -69,6 +72,7 @@ const Settings = () => {
       setAgentAdxMin(config?.agent_adx_min ?? 20.0);
       setAgentWaveResetMacdAbs(config?.agent_wave_reset_macd_abs ?? 0.05);
       setPersistAgentState(config?.persist_agent_state ?? true);
+      setBypassMarketHours(config?.bypass_market_hours ?? false);
       isFirstRender.current = false;
     }
   }, []);
@@ -111,6 +115,7 @@ const Settings = () => {
       agent_adx_min: agentAdxMin,
       agent_wave_reset_macd_abs: agentWaveResetMacdAbs,
       persist_agent_state: persistAgentState,
+      bypass_market_hours: bypassMarketHours,
     });
     setSaving(false);
   };
@@ -479,6 +484,22 @@ const Settings = () => {
                   checked={persistAgentState}
                   onChange={(e) => setPersistAgentState(e.target.checked)}
                   className="h-4 w-4"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-sm">
+                <div>
+                  <p className="text-sm font-medium">Bypass Market Hours (Test Mode)</p>
+                  <p className="text-xs text-gray-500">
+                    Runs the bot after-hours using simulated LTPs (use Paper mode).
+                  </p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={bypassMarketHours}
+                  onChange={(e) => setBypassMarketHours(e.target.checked)}
+                  className="h-4 w-4"
+                  disabled={!canChangeSignalSource}
                 />
               </div>
 

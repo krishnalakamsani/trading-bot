@@ -188,6 +188,9 @@ def get_config() -> dict:
         "agent_adx_min": config.get('agent_adx_min', 20.0),
         "agent_wave_reset_macd_abs": config.get('agent_wave_reset_macd_abs', 0.05),
         "persist_agent_state": config.get('persist_agent_state', True),
+
+        # Testing utilities
+        "bypass_market_hours": bool(config.get('bypass_market_hours', False)),
     }
 
 
@@ -308,6 +311,11 @@ async def update_config_values(updates: dict) -> dict:
         config['persist_agent_state'] = bool(updates['persist_agent_state'])
         updated_fields.append('persist_agent_state')
         logger.info(f"[CONFIG] Persist agent state: {config['persist_agent_state']}")
+
+    if updates.get('bypass_market_hours') is not None:
+        config['bypass_market_hours'] = bool(updates['bypass_market_hours'])
+        updated_fields.append('bypass_market_hours')
+        logger.info(f"[CONFIG] Bypass market hours: {config['bypass_market_hours']}")
 
     # Apply strategy/agent config live (no restart required)
     if any(k in updates for k in ('strategy_mode', 'signal_source', 'agent_adx_min', 'agent_wave_reset_macd_abs', 'persist_agent_state')):

@@ -43,6 +43,9 @@ const SettingsPanel = ({ onClose }) => {
   const [persistAgentState, setPersistAgentState] = useState(
     config.persist_agent_state ?? true
   );
+  const [bypassMarketHours, setBypassMarketHours] = useState(
+    config.bypass_market_hours ?? false
+  );
 
   const canChangeSignalSource = !botStatus?.is_running && !position?.has_position;
 
@@ -67,6 +70,7 @@ const SettingsPanel = ({ onClose }) => {
       setAgentAdxMin(config?.agent_adx_min ?? 20.0);
       setAgentWaveResetMacdAbs(config?.agent_wave_reset_macd_abs ?? 0.05);
       setPersistAgentState(config?.persist_agent_state ?? true);
+      setBypassMarketHours(config?.bypass_market_hours ?? false);
       isFirstRender.current = false;
     }
   }, []); // Empty dependency array - only run once on mount
@@ -109,6 +113,7 @@ const SettingsPanel = ({ onClose }) => {
       agent_adx_min: agentAdxMin,
       agent_wave_reset_macd_abs: agentWaveResetMacdAbs,
       persist_agent_state: persistAgentState,
+      bypass_market_hours: bypassMarketHours,
     });
     setSaving(false);
   };
@@ -483,6 +488,20 @@ const SettingsPanel = ({ onClose }) => {
                   <p className="text-xs text-gray-500">Keeps wave-lock across container restarts.</p>
                 </div>
                 <Switch checked={persistAgentState} onCheckedChange={setPersistAgentState} />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-sm">
+                <div>
+                  <p className="text-sm font-medium">Bypass Market Hours (Test Mode)</p>
+                  <p className="text-xs text-gray-500">
+                    Runs the bot after-hours using simulated LTPs (use Paper mode).
+                  </p>
+                </div>
+                <Switch
+                  checked={bypassMarketHours}
+                  onCheckedChange={setBypassMarketHours}
+                  disabled={!canChangeSignalSource}
+                />
               </div>
 
               <div className="flex justify-end">

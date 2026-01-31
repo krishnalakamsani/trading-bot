@@ -76,6 +76,10 @@ config = {
     "min_trade_gap": 0,  # Minimum seconds between trades (0 = disabled)
     "trade_only_on_flip": False,  # Only trade on SuperTrend direction change
     "risk_per_trade": 0,  # Risk amount per trade (0 = disabled, uses fixed qty)
+
+    # Testing utilities
+    # When enabled, the bot loop will run outside market hours and simulate LTPs.
+    "bypass_market_hours": False,
 }
 
 # SQLite Database path
