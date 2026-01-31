@@ -407,10 +407,34 @@ async def get_candle_data_for_backtest(
                 params.append(end_time)
 
             where_sql = " AND ".join(where)
-            query = f"SELECT * FROM candle_data WHERE {where_sql} ORDER BY timestamp ASC LIMIT {int(limit)}"
+            # Grab most recent candles in the range, then reverse to chronological order.
+            query = f"SELECT * FROM candle_data WHERE {where_sql} ORDER BY timestamp DESC LIMIT {int(limit)}"
             async with db.execute(query, tuple(params)) as cursor:
                 rows = await cursor.fetchall()
-            return [dict(row) for row in rows]
+            candles = [dict(row) for row in rows]
+            candles.reverse()
+            return candles
     except Exception as e:
         logger.error(f"[DB] Error retrieving candle data for backtest: {e}")
         return []
+
+
+async def get_candle_data_stats():
+    """Lightweight stats to diagnose candle availability on a deployment."""
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            async with db.execute("SELECT COUNT(*) FROM candle_data") as cursor:
+                total = (await cursor.fetchone())[0]
+
+            async with db.execute(
+                "SELECT index_name, COUNT(*) AS c FROM candle_data GROUP BY index_name ORDER BY c DESC"
+            ) as cursor:
+                by_index = await cursor.fetchall()
+
+            return {
+                "total": int(total or 0),
+                "by_index": [{"index_name": r[0], "count": int(r[1])} for r in by_index],
+            }
+    except Exception as e:
+        logger.error(f"[DB] Error retrieving candle stats: {e}")
+        return {"total": 0, "by_index": []}

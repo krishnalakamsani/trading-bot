@@ -15,7 +15,7 @@ from typing import List
 # Local imports
 from config import ROOT_DIR, bot_state, config
 from models import ConfigUpdate, BacktestRequest
-from database import init_db, load_config, get_trades, get_trade_analytics, get_candle_data_for_backtest
+from database import init_db, load_config, get_trades, get_trade_analytics, get_candle_data_for_backtest, get_candle_data_stats
 import bot_service
 from backtest import run_backtest
 
@@ -191,11 +191,15 @@ async def run_backtest_endpoint(req: BacktestRequest):
         end_time=req.end_time,
     )
     if not candles:
+        stats = await get_candle_data_stats()
+        available = ", ".join([f"{x['index_name']}({x['count']})" for x in stats.get('by_index', [])])
         raise HTTPException(
             status_code=400,
             detail=(
                 "No candle data found for backtest. "
-                "Run the bot during market hours to collect candles, or increase limit / change date range."
+                f"DB candle total={stats.get('total', 0)}; available index_name counts=[{available or 'none'}]. "
+                "Run the bot during market hours to collect candles, or adjust index_name / limit / date range. "
+                "You can also check /api/candles?limit=5&index_name=<INDEX>."
             ),
         )
 
