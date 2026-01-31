@@ -61,6 +61,14 @@ async def init_db():
             )
         ''')
         await db.commit()
+
+        # Migration: remove deprecated config keys
+        try:
+            await db.execute("DELETE FROM config WHERE key = ?", ("signal_source",))
+            await db.execute("DELETE FROM config WHERE key = ?", ("bypass_market_hours",))
+            await db.commit()
+        except Exception as e:
+            logger.error(f"[DB] Migration error (remove deprecated keys): {e}")
         
         # Migration: Add index_name column if it doesn't exist
         try:
@@ -93,6 +101,9 @@ async def load_config():
                             config[key] = value.lower() in ('true', '1', 'yes')
                         else:
                             config[key] = value
+                    else:
+                        # Keep startup resilient while making stale keys visible in logs
+                        logger.debug(f"[DB] Ignoring unknown config key from DB: {key}")
     except Exception as e:
         logger.error(f"Error loading config: {e}")
 

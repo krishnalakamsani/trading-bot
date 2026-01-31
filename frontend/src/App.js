@@ -79,8 +79,7 @@ function App() {
     persist_agent_state: true
     ,
 
-    // Testing utilities
-    bypass_market_hours: false
+    // No after-hours bypass; bot always fetches when running.
   });
   const [indices, setIndices] = useState([]);
   const [timeframes, setTimeframes] = useState([]);

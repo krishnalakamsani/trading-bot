@@ -1,0 +1,8 @@
+2026-02-01 00:28:43,161 - database - INFO - [DB] Loaded 15 config entries from database
+2026-02-01 00:28:43,163 - server - INFO - [STARTUP] Database initialized, config loaded. Index=NIFTY, Strategy=agent
+2026-02-01 00:29:17,590 - server - INFO - [SHUTDOWN] Server shutting down
+2026-02-01 00:29:54,587 - httpx - INFO - HTTP Request: GET http://testserver/api/ "HTTP/1.1 200 OK"
+2026-02-01 00:29:54,598 - httpx - INFO - HTTP Request: GET http://testserver/api/config "HTTP/1.1 200 OK"
+2026-02-01 00:29:55,197 - httpx - INFO - HTTP Request: GET http://testserver/api/strategy/status "HTTP/1.1 200 OK"
+2026-02-01 00:33:30,246 - httpx - INFO - HTTP Request: GET http://testserver/api/config "HTTP/1.1 200 OK"
+2026-02-01 00:33:30,580 - httpx - INFO - HTTP Request: GET http://testserver/api/strategy/status "HTTP/1.1 200 OK"

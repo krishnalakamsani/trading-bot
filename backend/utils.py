@@ -20,15 +20,16 @@ def is_market_open():
     return market_open <= ist <= market_close
 
 def can_take_new_trade():
-    """Check if new trades are allowed (before 3:10 PM IST, weekday only)"""
+    """Check if new trades are allowed (09:25 AM - 3:10 PM IST, weekday only)"""
     ist = get_ist_time()
     
     # Check if it's a weekday
     if ist.weekday() >= 5:  # Saturday or Sunday
         return False
     
+    start_time = ist.replace(hour=9, minute=25, second=0, microsecond=0)
     cutoff_time = ist.replace(hour=15, minute=10, second=0, microsecond=0)
-    return ist < cutoff_time
+    return start_time <= ist <= cutoff_time
 
 def should_force_squareoff():
     """Check if it's time to force square off (3:25 PM IST, weekday only)"""

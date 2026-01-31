@@ -1,4 +1,5 @@
 import logging
+from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime, timezone
@@ -136,8 +137,8 @@ def run_backtest(
     """
 
     mode = (strategy_mode or "agent").strip().lower()
-    if mode not in ("agent", "supertrend"):
-        raise ValueError("strategy_mode must be 'agent' or 'supertrend'")
+    if mode not in ("agent", "supertrend", "st_macd_hist"):
+        raise ValueError("strategy_mode must be 'agent', 'supertrend', or 'st_macd_hist'")
 
     tf = int(timeframe_minutes or 0)
     if tf < 0:
@@ -155,11 +156,14 @@ def run_backtest(
 
     last_st_dir: Optional[int] = None
     last_macd: Optional[float] = None
+    last_hist: Optional[float] = None
+    hist_window = deque(maxlen=3)
 
     position_side: Optional[str] = None
     entry_time: Optional[str] = None
     entry_price: Optional[float] = None
     best_favorable_points: float = 0.0
+    st_trailing_stop: Optional[float] = None
 
     trades: List[BacktestTrade] = []
     equity_curve: List[float] = [0.0]
@@ -175,12 +179,19 @@ def run_backtest(
         st_val, st_signal = st.add_candle(high, low, close)
         macd_val, _ = macd.add_candle(high, low, close)
         adx_val, _ = adx.add_candle(high, low, close)
+        hist_val = getattr(macd, "last_histogram", None)
 
         # Need enough warmup for indicators
         if st_val is None or macd_val is None or adx_val is None:
             last_macd = macd_val if macd_val is not None else last_macd
             last_st_dir = st.direction if st_val is not None else last_st_dir
+            if isinstance(hist_val, (int, float)):
+                last_hist = float(hist_val)
+                hist_window.append(float(hist_val))
             continue
+
+        if isinstance(hist_val, (int, float)):
+            hist_window.append(float(hist_val))
 
         st_dir = st.direction
         supertrend_flipped = bool(last_st_dir in (1, -1) and st_dir in (1, -1) and last_st_dir != st_dir)
@@ -196,7 +207,63 @@ def run_backtest(
             exit_reason: Optional[str] = None
             exit_price: Optional[float] = None
 
-            if position_side == "CE":
+            if mode == "st_macd_hist":
+                exit_reason: Optional[str] = None
+                exit_price: Optional[float] = None
+
+                # SuperTrend-based trailing stop (spec):
+                # - initial SL = SuperTrend value at entry
+                # - trail to SuperTrend value each candle (never loosens)
+                if isinstance(st_val, (int, float)):
+                    st_line = float(st_val)
+                    if st_trailing_stop is None:
+                        st_trailing_stop = st_line
+                    else:
+                        if position_side == "CE":
+                            st_trailing_stop = max(float(st_trailing_stop), st_line)
+                        else:
+                            st_trailing_stop = min(float(st_trailing_stop), st_line)
+
+                if st_trailing_stop is not None:
+                    if position_side == "CE" and low <= st_trailing_stop:
+                        exit_price = float(st_trailing_stop)
+                        exit_reason = "Trailing SL Hit"
+                    elif position_side == "PE" and high >= st_trailing_stop:
+                        exit_price = float(st_trailing_stop)
+                        exit_reason = "Trailing SL Hit"
+
+                # Target (still supported) after stop
+                tgt_points = float(target_points or 0.0)
+                if exit_reason is None and tgt_points > 0:
+                    if position_side == "CE" and high >= (entry_price + tgt_points):
+                        exit_price = float(entry_price + tgt_points)
+                        exit_reason = "Target Hit"
+                    elif position_side == "PE" and low <= (entry_price - tgt_points):
+                        exit_price = float(entry_price - tgt_points)
+                        exit_reason = "Target Hit"
+
+                if exit_reason and exit_price is not None:
+                    pnl = _calc_points_pnl(position_side, entry_price, exit_price)
+                    equity += pnl
+                    equity_curve.append(equity)
+
+                    trades[-1].exit_time = ts
+                    trades[-1].exit_price = exit_price
+                    trades[-1].pnl_points = pnl
+                    trades[-1].exit_reason = exit_reason
+
+                    position_side = None
+                    entry_time = None
+                    entry_price = None
+                    best_favorable_points = 0.0
+                    st_trailing_stop = None
+
+                    last_macd = float(macd_val)
+                    last_hist = float(hist_val) if isinstance(hist_val, (int, float)) else last_hist
+                    last_st_dir = st_dir
+                    continue
+
+            elif position_side == "CE":
                 best_favorable_points = max(best_favorable_points, high - entry_price)
 
                 # Stop level(s)
@@ -258,8 +325,10 @@ def run_backtest(
                 entry_time = None
                 entry_price = None
                 best_favorable_points = 0.0
+                st_trailing_stop = None
 
                 last_macd = float(macd_val)
+                last_hist = float(hist_val) if isinstance(hist_val, (int, float)) else last_hist
                 last_st_dir = st_dir
                 continue
 
@@ -280,7 +349,7 @@ def run_backtest(
                 current_position_side=position_side,
             )
             action = agent.decide(inputs)
-        else:
+        elif mode == "supertrend":
             # SuperTrend flip baseline
             if not position_side:
                 if supertrend_flipped and st_dir == 1:
@@ -291,6 +360,42 @@ def run_backtest(
                 # Exit on opposite flip
                 if supertrend_flipped:
                     action = AgentAction.EXIT
+        else:
+            # ST + MACD Histogram strategy (index-candle proxy)
+            # Bullish entry (CE): ST BUY + hist in (0.5, 1.25) + last 3 hist increasing
+            # Bearish entry (PE): ST SELL + hist in (-1.25, -0.5) + last 3 hist decreasing
+            # Exit:
+            # - Exit: SuperTrend reversal (risk exits handled separately)
+            h1 = h2 = h3 = None
+            if len(hist_window) >= 3:
+                h1, h2, h3 = list(hist_window)[-3:]
+
+            if not position_side:
+                if (
+                    st_dir == 1
+                    and isinstance(h1, (int, float))
+                    and isinstance(h2, (int, float))
+                    and isinstance(h3, (int, float))
+                    and (h1 < h2 < h3)
+                    and (h3 > 0.5 and h3 < 1.25)
+                ):
+                    action = AgentAction.ENTER_CE
+                elif (
+                    st_dir == -1
+                    and isinstance(h1, (int, float))
+                    and isinstance(h2, (int, float))
+                    and isinstance(h3, (int, float))
+                    and (h1 > h2 > h3)
+                    and (h3 < -0.5 and h3 > -1.25)
+                ):
+                    action = AgentAction.ENTER_PE
+            else:
+                if position_side == "CE":
+                    if st_dir == -1:
+                        action = AgentAction.EXIT
+                elif position_side == "PE":
+                    if st_dir == 1:
+                        action = AgentAction.EXIT
 
         # Apply action at close
         if action in (AgentAction.ENTER_CE, AgentAction.ENTER_PE) and not position_side:
@@ -298,6 +403,7 @@ def run_backtest(
             entry_time = ts
             entry_price = close
             best_favorable_points = 0.0
+            st_trailing_stop = float(st_val) if mode == "st_macd_hist" and isinstance(st_val, (int, float)) else None
             trades.append(
                 BacktestTrade(
                     side=position_side,
@@ -320,14 +426,21 @@ def run_backtest(
             trades[-1].exit_time = ts
             trades[-1].exit_price = exit_price
             trades[-1].pnl_points = pnl
-            trades[-1].exit_reason = "Agent Exit" if mode == "agent" else "Flip Exit"
+            if mode == "agent":
+                trades[-1].exit_reason = "Agent Exit"
+            elif mode == "supertrend":
+                trades[-1].exit_reason = "Flip Exit"
+            else:
+                trades[-1].exit_reason = "Strategy Exit"
 
             position_side = None
             entry_time = None
             entry_price = None
             best_favorable_points = 0.0
+            st_trailing_stop = None
 
         last_macd = float(macd_val)
+        last_hist = float(hist_val) if isinstance(hist_val, (int, float)) else last_hist
         last_st_dir = st_dir
 
     if close_open_position_at_end and position_side and entry_price is not None and candles:
@@ -343,6 +456,7 @@ def run_backtest(
         trades[-1].exit_price = close
         trades[-1].pnl_points = pnl
         trades[-1].exit_reason = "EOD"
+        st_trailing_stop = None
 
     closed_trades = [t for t in trades if t.pnl_points is not None]
     total_trades = len(closed_trades)

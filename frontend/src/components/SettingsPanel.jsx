@@ -35,9 +35,6 @@ const SettingsPanel = ({ onClose }) => {
 
   // Strategy / Agent
   const strategyMode = "st_macd_hist";
-  const [bypassMarketHours, setBypassMarketHours] = useState(
-    config.bypass_market_hours ?? false
-  );
 
   const [saving, setSaving] = useState(false);
   const isFirstRender = React.useRef(true);
@@ -55,7 +52,6 @@ const SettingsPanel = ({ onClose }) => {
       setTargetPoints(config?.target_points || 0);
       setRiskPerTrade(config?.risk_per_trade || 0);
 
-      setBypassMarketHours(config?.bypass_market_hours ?? false);
       isFirstRender.current = false;
     }
   }, []); // Empty dependency array - only run once on mount
@@ -94,7 +90,6 @@ const SettingsPanel = ({ onClose }) => {
     setSaving(true);
     await updateConfig({
       strategy_mode: strategyMode,
-      bypass_market_hours: bypassMarketHours,
     });
     setSaving(false);
   };
@@ -390,19 +385,6 @@ const SettingsPanel = ({ onClose }) => {
                     Exit: <span className="font-mono">ST reversal</span> OR <span className="font-mono">Hist &lt; 0</span> OR <span className="font-mono">Trailing SL</span> OR <span className="font-mono">Target</span>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-sm">
-                <div>
-                  <p className="text-sm font-medium">Bypass Market Hours (Test Mode)</p>
-                  <p className="text-xs text-gray-500">
-                    Runs the bot after-hours using simulated LTPs (use Paper mode).
-                  </p>
-                </div>
-                <Switch
-                  checked={bypassMarketHours}
-                  onCheckedChange={setBypassMarketHours}
-                />
               </div>
 
               <div className="flex justify-end">

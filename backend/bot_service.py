@@ -79,9 +79,11 @@ def get_market_data() -> dict:
         "supertrend_signal": bot_state['last_supertrend_signal'],
         "supertrend_value": bot_state['supertrend_value'],
         "macd_value": bot_state['macd_value'],
-        "adx_value": bot_state.get('adx_value', 0.0),
+        "macd_hist": bot_state.get('macd_hist', 0.0),
+        # Kept for backward compatibility with older UI builds.
+        "adx_value": 0.0,
         "signal_status": bot_state['signal_status'],
-        "strategy_mode": bot_state.get('strategy_mode', config.get('strategy_mode', 'agent')),
+        "strategy_mode": bot_state.get('strategy_mode', 'st_macd_hist'),
         "selected_index": config['selected_index'],
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
@@ -91,11 +93,11 @@ def get_position() -> dict:
     """Get current position info"""
     if not bot_state['current_position']:
         return {"has_position": False}
-    
+
     index_config = get_index_config(config['selected_index'])
     qty = config['order_qty'] * index_config['lot_size']
     unrealized_pnl = (bot_state['current_option_ltp'] - bot_state['entry_price']) * qty
-    
+
     return {
         "has_position": True,
         "option_type": bot_state['current_position'].get('option_type'),
@@ -122,30 +124,17 @@ def get_daily_summary() -> dict:
 
 def get_strategy_status() -> dict:
     """Get live strategy/agent state for debugging (read-only)."""
-    bot = get_trading_bot()
-    agent = getattr(bot, 'strategy_agent', None)
-
-    wave_lock = None
-    last_trade_side = None
-    if agent is not None:
-        wave_lock = getattr(agent, 'wave_lock', None)
-        last_trade_side = getattr(agent, 'last_trade_side', None)
-
     return {
-        "strategy_mode": config.get('strategy_mode', 'agent'),
-        "agent_params": {
-            "adx_min": config.get('agent_adx_min', 20.0),
-            "wave_reset_macd_abs": config.get('agent_wave_reset_macd_abs', 0.05),
-            "persist_agent_state": config.get('persist_agent_state', True),
-        },
-        "agent_state": {
-            "wave_lock": wave_lock,
-            "last_trade_side": last_trade_side,
+        "strategy_mode": bot_state.get('strategy_mode', 'st_macd_hist'),
+        "rules": {
+            "entry": "ST BUY + MACD hist in (0.5, 1.25) + last 3 candles increasing",
+            "exit": "ST reversal OR trailing SL OR target",
+            "candle_interval_seconds": int(bot_state.get('candle_interval', 5) or 5),
         },
         "indicators": {
             "supertrend_value": bot_state.get('supertrend_value', 0.0),
             "macd_value": bot_state.get('macd_value', 0.0),
-            "adx_value": bot_state.get('adx_value', 0.0),
+            "macd_hist": bot_state.get('macd_hist', 0.0),
         },
         "position": {
             "in_position": bool(bot_state.get('current_position')),
@@ -164,7 +153,7 @@ def get_config() -> dict:
         "mode": bot_state['mode'],
         # Index & Timeframe
         "selected_index": config['selected_index'],
-        "candle_interval": config['candle_interval'],
+        "candle_interval": int(bot_state.get('candle_interval', 5) or 5),
         "lot_size": index_config['lot_size'],
         "strike_interval": index_config['strike_interval'],
         "expiry_type": index_config.get('expiry_type', 'weekly'),
@@ -184,13 +173,11 @@ def get_config() -> dict:
 
         # Strategy / Agent
         "strategy_mode": config.get('strategy_mode', 'agent'),
-        "signal_source": config.get('signal_source', 'index'),
         "agent_adx_min": config.get('agent_adx_min', 20.0),
         "agent_wave_reset_macd_abs": config.get('agent_wave_reset_macd_abs', 0.05),
         "persist_agent_state": config.get('persist_agent_state', True),
 
-        # Testing utilities
-        "bypass_market_hours": bool(config.get('bypass_market_hours', False)),
+        # Entry window is enforced server-side (09:25–15:10 IST on weekdays)
     }
 
 
@@ -267,32 +254,22 @@ async def update_config_values(updates: dict) -> dict:
             'supertrend_flip': 'supertrend',
             'supertrend flip': 'supertrend',
             'flip': 'supertrend',
+            # ST + MACD histogram
+            'st_macd_hist': 'st_macd_hist',
+            'st+macd_hist': 'st_macd_hist',
+            'st + macd hist': 'st_macd_hist',
+            'st + macd histogram': 'st_macd_hist',
+            'st_macd_histogram': 'st_macd_hist',
         }
         mode = mode_map.get(normalized)
-        if mode in ('agent', 'supertrend'):
+        if mode in ('agent', 'supertrend', 'st_macd_hist'):
             config['strategy_mode'] = mode
             bot_state['strategy_mode'] = mode
             updated_fields.append('strategy_mode')
             logger.info(f"[CONFIG] Strategy mode changed to: {mode} (requested: {requested})")
         else:
             logger.warning(
-                f"[CONFIG] Invalid strategy_mode: {requested} (normalized: {normalized}). Allowed: agent|supertrend"
-            )
-
-    if updates.get('signal_source') is not None:
-        requested = str(updates['signal_source']).strip().lower()
-        if requested in ('index', 'option_fixed'):
-            config['signal_source'] = requested
-            bot_state['signal_source'] = requested
-            updated_fields.append('signal_source')
-            logger.info(f"[CONFIG] Signal source changed to: {requested}")
-
-            # Reset indicators & fixed-contract metadata when switching sources
-            bot = get_trading_bot()
-            bot.reset_indicator()
-        else:
-            logger.warning(
-                f"[CONFIG] Invalid signal_source: {requested}. Allowed: index|option_fixed"
+                f"[CONFIG] Invalid strategy_mode: {requested} (normalized: {normalized}). Allowed: agent|supertrend|st_macd_hist"
             )
 
     if updates.get('agent_adx_min') is not None:
@@ -312,13 +289,10 @@ async def update_config_values(updates: dict) -> dict:
         updated_fields.append('persist_agent_state')
         logger.info(f"[CONFIG] Persist agent state: {config['persist_agent_state']}")
 
-    if updates.get('bypass_market_hours') is not None:
-        config['bypass_market_hours'] = bool(updates['bypass_market_hours'])
-        updated_fields.append('bypass_market_hours')
-        logger.info(f"[CONFIG] Bypass market hours: {config['bypass_market_hours']}")
+
 
     # Apply strategy/agent config live (no restart required)
-    if any(k in updates for k in ('strategy_mode', 'signal_source', 'agent_adx_min', 'agent_wave_reset_macd_abs', 'persist_agent_state')):
+    if any(k in updates for k in ('strategy_mode', 'agent_adx_min', 'agent_wave_reset_macd_abs', 'persist_agent_state')):
         bot = get_trading_bot()
         bot.apply_strategy_config()
         

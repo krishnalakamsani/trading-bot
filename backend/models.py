@@ -20,11 +20,10 @@ class ConfigUpdate(BaseModel):
     trade_only_on_flip: Optional[bool] = None  # Only trade on SuperTrend flip
 
     # Testing utilities
-    bypass_market_hours: Optional[bool] = None  # Allow bot to run after-hours using simulated LTPs
+    # bypass_market_hours removed: bot always fetches data when running; entries are gated by time window.
 
     # Strategy / Agent
     strategy_mode: Optional[str] = None  # 'agent' | 'supertrend'
-    signal_source: Optional[str] = None  # 'index' | 'option_fixed'
     agent_adx_min: Optional[float] = None
     agent_wave_reset_macd_abs: Optional[float] = None
     persist_agent_state: Optional[bool] = None

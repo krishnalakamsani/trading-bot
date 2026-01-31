@@ -155,10 +155,14 @@ class MACD:
         self.signal_period = signal
         self.closes = []
         self.macd_values = []
+        self.last_signal_line = None
+        self.last_histogram = None
     
     def reset(self):
         self.closes = []
         self.macd_values = []
+        self.last_signal_line = None
+        self.last_histogram = None
     
     def _ema(self, values, period):
         """Calculate Exponential Moving Average"""
@@ -193,6 +197,11 @@ class MACD:
                                  for i in range(self.slow, len(self.closes) + 1)], self.signal_period)
         
         self.macd_values.append(macd)
+        self.last_signal_line = signal_line
+        try:
+            self.last_histogram = macd - signal_line
+        except Exception:
+            self.last_histogram = None
         
         # Signal: GREEN if MACD crosses above signal line, RED if below
         if len(self.macd_values) > 1:

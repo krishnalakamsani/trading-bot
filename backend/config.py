@@ -29,8 +29,6 @@ bot_state = {
     "max_drawdown": 0.0,
     "selected_index": "NIFTY",  # Current selected index
     "strategy_mode": "agent",
-    # Signal source: 'index' (default) or 'option_fixed'
-    "signal_source": "index",
     # Fixed-contract option signal metadata (best-effort)
     "fixed_option_strike": None,
     "fixed_option_expiry": None,
@@ -61,10 +59,6 @@ config = {
     # - agent: ST + ADX + MACD agent decides
     # - supertrend: simple ST flip logic (fallback)
     "strategy_mode": "agent",
-    # Signal source for strategy indicators
-    # - index: indicators computed on index OHLC (current behavior)
-    # - option_fixed: indicators computed on a fixed CE+PE contract's OHLC
-    "signal_source": "index",
     # Agent tuning
     "agent_adx_min": 20.0,
     "agent_wave_reset_macd_abs": 0.05,
@@ -79,7 +73,6 @@ config = {
 
     # Testing utilities
     # When enabled, the bot loop will run outside market hours and simulate LTPs.
-    "bypass_market_hours": False,
 }
 
 # SQLite Database path
