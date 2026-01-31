@@ -91,33 +91,35 @@ def run_backtest(
             continue
 
         st_dir = st.direction
-        st_flip_up = bool(last_st_dir == -1 and st_dir == 1)
-        st_flip_down = bool(last_st_dir == 1 and st_dir == -1)
+        supertrend_flipped = bool(last_st_dir in (1, -1) and st_dir in (1, -1) and last_st_dir != st_dir)
 
         action = AgentAction.HOLD
         if mode == "agent":
             inputs = AgentInputs(
-                st_flip_up=st_flip_up,
-                st_flip_down=st_flip_down,
-                adx=float(adx_val),
-                macd_current=float(macd_val),
-                macd_prev=float(last_macd) if last_macd is not None else None,
-                current_position=bool(position_side),
+                timestamp=ts,
+                open=float(row.get("open", close)),
+                high=high,
+                low=low,
+                close=close,
+                supertrend_direction=st_dir if st_dir in (1, -1) else None,
+                supertrend_flipped=supertrend_flipped,
+                adx_value=float(adx_val) if isinstance(adx_val, (int, float)) else None,
+                macd_current=float(macd_val) if isinstance(macd_val, (int, float)) else None,
+                macd_previous=float(last_macd) if isinstance(last_macd, (int, float)) else None,
+                in_position=bool(position_side),
                 current_position_side=position_side,
             )
             action = agent.decide(inputs)
         else:
             # SuperTrend flip baseline
             if not position_side:
-                if st_flip_up:
+                if supertrend_flipped and st_dir == 1:
                     action = AgentAction.ENTER_CE
-                elif st_flip_down:
+                elif supertrend_flipped and st_dir == -1:
                     action = AgentAction.ENTER_PE
             else:
                 # Exit on opposite flip
-                if position_side == "CE" and st_flip_down:
-                    action = AgentAction.EXIT
-                elif position_side == "PE" and st_flip_up:
+                if supertrend_flipped:
                     action = AgentAction.EXIT
 
         # Apply action at close
