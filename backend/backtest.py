@@ -1,6 +1,7 @@
 import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime, timezone
 
 from indicators import ADX, MACD, SuperTrend
 from strategy_agent import AgentAction, AgentInputs, STAdxMacdAgent
@@ -36,10 +37,87 @@ def _equity_max_drawdown(equity: List[float]) -> float:
     return max_dd
 
 
+def _parse_iso_to_dt(value: str) -> Optional[datetime]:
+    if not value:
+        return None
+    s = value.strip()
+    if s.endswith('Z'):
+        s = s[:-1] + '+00:00'
+    try:
+        dt = datetime.fromisoformat(s)
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _floor_to_timeframe_ist(dt_utc: datetime, timeframe_minutes: int) -> datetime:
+    """Bucket a UTC datetime into IST timeframe boundaries."""
+    # Convert to IST by adding +05:30 (keeps offset-aware semantics simple)
+    ist = _parse_iso_to_dt(iso_to_ist_iso(dt_utc.astimezone(timezone.utc).isoformat()) or "")
+    if ist is None:
+        # fallback: treat as UTC
+        ist = dt_utc
+
+    minute = (ist.minute // timeframe_minutes) * timeframe_minutes
+    return ist.replace(minute=minute, second=0, microsecond=0)
+
+
+def _resample_candles(candles: List[Dict[str, Any]], timeframe_minutes: int) -> List[Dict[str, Any]]:
+    if timeframe_minutes <= 1:
+        return candles
+    if not candles:
+        return candles
+
+    out: List[Dict[str, Any]] = []
+    bucket_key: Optional[datetime] = None
+    bucket: Optional[Dict[str, Any]] = None
+
+    for row in candles:
+        ts_raw = str(row.get("timestamp") or row.get("created_at") or "")
+        dt = _parse_iso_to_dt(ts_raw)
+        if dt is None:
+            # If timestamp is unparseable, skip (keeps ordering safe)
+            continue
+
+        key = _floor_to_timeframe_ist(dt.astimezone(timezone.utc), timeframe_minutes)
+
+        high = float(row["high"])
+        low = float(row["low"])
+        close = float(row["close"])
+        open_ = float(row.get("open", close))
+
+        if bucket_key is None or key != bucket_key:
+            if bucket is not None:
+                out.append(bucket)
+
+            bucket_key = key
+            bucket = {
+                "timestamp": key.isoformat(),
+                "high": high,
+                "low": low,
+                "close": close,
+                "open": open_,
+            }
+            continue
+
+        # Update existing bucket
+        bucket["high"] = max(float(bucket["high"]), high)
+        bucket["low"] = min(float(bucket["low"]), low)
+        bucket["close"] = close
+
+    if bucket is not None:
+        out.append(bucket)
+
+    return out
+
+
 def run_backtest(
     candles: List[Dict[str, Any]],
     *,
     strategy_mode: str = "agent",
+    timeframe_minutes: int = 0,
     supertrend_period: int = 7,
     supertrend_multiplier: float = 4.0,
     agent_adx_min: float = 20.0,
@@ -60,6 +138,13 @@ def run_backtest(
     mode = (strategy_mode or "agent").strip().lower()
     if mode not in ("agent", "supertrend"):
         raise ValueError("strategy_mode must be 'agent' or 'supertrend'")
+
+    tf = int(timeframe_minutes or 0)
+    if tf < 0:
+        raise ValueError("timeframe_minutes must be >= 0")
+
+    base_candle_count = len(candles)
+    candles = _resample_candles(candles, tf)
 
     st = SuperTrend(period=supertrend_period, multiplier=supertrend_multiplier)
     macd = MACD()
@@ -274,6 +359,8 @@ def run_backtest(
         "meta": {
             "strategy_mode": mode,
             "candles": len(candles),
+            "base_candles": base_candle_count,
+            "timeframe_minutes": tf,
             "close_open_position_at_end": close_open_position_at_end,
         },
         "params": {

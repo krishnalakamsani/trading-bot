@@ -86,6 +86,9 @@ class BacktestRequest(BaseModel):
     start_time: Optional[str] = None  # ISO string
     end_time: Optional[str] = None    # ISO string
 
+    # Candle timeframe for backtest (minutes). If >1, backend will resample.
+    timeframe_minutes: Optional[int] = None
+
     # Strategy selection
     strategy_mode: str = "agent"  # 'agent' | 'supertrend'
 

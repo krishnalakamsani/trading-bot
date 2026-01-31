@@ -37,6 +37,7 @@ const TradesAnalysis = () => {
   const [btIndexName, setBtIndexName] = useState('NIFTY');
   const [btLimit, setBtLimit] = useState('2000');
   const [btStrategyMode, setBtStrategyMode] = useState('agent');
+  const [btTimeframeMinutes, setBtTimeframeMinutes] = useState('1');
   const [btStartTime, setBtStartTime] = useState('');
   const [btEndTime, setBtEndTime] = useState('');
   const [btInitialStoploss, setBtInitialStoploss] = useState('50');
@@ -81,6 +82,7 @@ const TradesAnalysis = () => {
         limit: parseInt(btLimit || '2000', 10),
         start_time: btStartTime.trim() ? btStartTime.trim() : null,
         end_time: btEndTime.trim() ? btEndTime.trim() : null,
+        timeframe_minutes: btTimeframeMinutes.trim() ? parseInt(btTimeframeMinutes, 10) : null,
         strategy_mode: btStrategyMode,
         initial_stoploss: btInitialStoploss.trim() ? Number(btInitialStoploss) : null,
         target_points: btTargetPoints.trim() ? Number(btTargetPoints) : null,
@@ -846,7 +848,7 @@ const TradesAnalysis = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
                     <div>
                       <label className="text-sm text-slate-400 mb-2 block">Index</label>
                       <Select value={btIndexName} onValueChange={setBtIndexName}>
@@ -870,6 +872,22 @@ const TradesAnalysis = () => {
                         <SelectContent className="bg-slate-700 border-slate-600">
                           <SelectItem value="agent" className="text-white">Agent (ST + ADX + MACD)</SelectItem>
                           <SelectItem value="supertrend" className="text-white">SuperTrend Flip</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <label className="text-sm text-slate-400 mb-2 block">Timeframe</label>
+                      <Select value={btTimeframeMinutes} onValueChange={setBtTimeframeMinutes}>
+                        <SelectTrigger className="bg-slate-700 border-slate-600 text-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="bg-slate-700 border-slate-600">
+                          <SelectItem value="1" className="text-white">1 min</SelectItem>
+                          <SelectItem value="3" className="text-white">3 min</SelectItem>
+                          <SelectItem value="5" className="text-white">5 min</SelectItem>
+                          <SelectItem value="10" className="text-white">10 min</SelectItem>
+                          <SelectItem value="15" className="text-white">15 min</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

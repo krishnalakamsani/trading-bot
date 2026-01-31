@@ -271,6 +271,7 @@ async def run_backtest_endpoint(req: BacktestRequest):
     result = run_backtest(
         candles,
         strategy_mode=req.strategy_mode,
+        timeframe_minutes=int(req.timeframe_minutes or 0),
         supertrend_period=int(config.get('supertrend_period', 7)),
         supertrend_multiplier=float(config.get('supertrend_multiplier', 4)),
         agent_adx_min=float(req.agent_adx_min if req.agent_adx_min is not None else config.get('agent_adx_min', 20.0)),
