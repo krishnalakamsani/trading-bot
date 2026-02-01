@@ -62,6 +62,7 @@ class TradingBot:
         self._pe_close = 0.0
         self.last_exit_candle_time = None
         self.last_trade_time = None  # For min_trade_gap protection
+        self._last_daily_reset_date = None  # IST date when daily reset last ran
         self.apply_strategy_config()
 
         # Keep bot_state strategy_mode in sync for API/WS
@@ -399,7 +400,7 @@ class TradingBot:
                 
                 # Check daily reset (9:15 AM IST)
                 ist = get_ist_time()
-                if ist.hour == 9 and ist.minute == 15:
+                if ist.hour == 9 and ist.minute == 15 and self._last_daily_reset_date != ist.date():
                     bot_state['daily_trades'] = 0
                     bot_state['daily_pnl'] = 0.0
                     bot_state['daily_max_loss_triggered'] = False
@@ -408,6 +409,7 @@ class TradingBot:
                     self.last_trade_time = None
                     candle_number = 0
                     self.reset_indicator()
+                    self._last_daily_reset_date = ist.date()
                     logger.info("[BOT] Daily reset at 9:15 AM")
                 
                 # Force square-off at 3:25 PM
