@@ -3,6 +3,7 @@ Handles all trading logic, signal processing, and order execution.
 Uses structured logging with tags for easy troubleshooting.
 """
 import asyncio
+import copy
 from collections import deque
 from datetime import datetime, timezone, timedelta
 import logging
@@ -597,6 +598,7 @@ class TradingBot:
                             # Publish per-option indicator values for UI/debug
                             bot_state['signal_ce_supertrend_value'] = float(ce_st_value) if isinstance(ce_st_value, (int, float)) else bot_state.get('signal_ce_supertrend_value', 0.0)
                             bot_state['signal_ce_supertrend_signal'] = 'GREEN' if ce_st_dir == 1 else ('RED' if ce_st_dir == -1 else bot_state.get('signal_ce_supertrend_signal'))
+                            bot_state['signal_ce_macd_value'] = float(ce_macd) if isinstance(ce_macd, (int, float)) else bot_state.get('signal_ce_macd_value', 0.0)
                             bot_state['signal_ce_macd_hist'] = float(ce_hist) if isinstance(ce_hist, (int, float)) else bot_state.get('signal_ce_macd_hist', 0.0)
 
                         # Compute PE indicators (if candle ready)
@@ -616,6 +618,7 @@ class TradingBot:
 
                             bot_state['signal_pe_supertrend_value'] = float(pe_st_value) if isinstance(pe_st_value, (int, float)) else bot_state.get('signal_pe_supertrend_value', 0.0)
                             bot_state['signal_pe_supertrend_signal'] = 'GREEN' if pe_st_dir == 1 else ('RED' if pe_st_dir == -1 else bot_state.get('signal_pe_supertrend_signal'))
+                            bot_state['signal_pe_macd_value'] = float(pe_macd) if isinstance(pe_macd, (int, float)) else bot_state.get('signal_pe_macd_value', 0.0)
                             bot_state['signal_pe_macd_hist'] = float(pe_hist) if isinstance(pe_hist, (int, float)) else bot_state.get('signal_pe_macd_hist', 0.0)
 
                         # Update global "latest" indicator values for UI/debug (prefer active position side)
@@ -643,6 +646,10 @@ class TradingBot:
                                     self.trailing_sl = float(ce_st_value)
                                 else:
                                     self.trailing_sl = max(float(self.trailing_sl), float(ce_st_value))
+
+                                # Apply profit lock + optional step trailing (never reduces SL)
+                                current_ltp = float(bot_state.get('current_option_ltp') or 0.0)
+                                self._apply_profit_lock_and_step_trailing(current_ltp)
                                 bot_state['trailing_sl'] = self.trailing_sl
 
                         elif self.current_position and self.current_position.get('option_type') == 'PE':
@@ -653,6 +660,9 @@ class TradingBot:
                                     self.trailing_sl = float(pe_st_value)
                                 else:
                                     self.trailing_sl = max(float(self.trailing_sl), float(pe_st_value))
+
+                                current_ltp = float(bot_state.get('current_option_ltp') or 0.0)
+                                self._apply_profit_lock_and_step_trailing(current_ltp)
                                 bot_state['trailing_sl'] = self.trailing_sl
 
                         if exit_reason is not None and self.current_position:
@@ -778,6 +788,9 @@ class TradingBot:
                             simulated_ltp = max(0.05, round(simulated_ltp, 2))
                             
                             bot_state['current_option_ltp'] = simulated_ltp
+
+                # Live indicator preview (updates every loop using the forming candle)
+                self._update_live_indicator_preview()
                 
                 # Broadcast state update
                 await self.broadcast_state()
@@ -823,6 +836,8 @@ class TradingBot:
                 "signal_pe_supertrend_signal": bot_state.get('signal_pe_supertrend_signal'),
                 "signal_ce_supertrend_value": bot_state.get('signal_ce_supertrend_value', 0.0),
                 "signal_pe_supertrend_value": bot_state.get('signal_pe_supertrend_value', 0.0),
+                "signal_ce_macd_value": bot_state.get('signal_ce_macd_value', 0.0),
+                "signal_pe_macd_value": bot_state.get('signal_pe_macd_value', 0.0),
                 "signal_ce_macd_hist": bot_state.get('signal_ce_macd_hist', 0.0),
                 "signal_pe_macd_hist": bot_state.get('signal_pe_macd_hist', 0.0),
                 "timestamp": datetime.now(timezone.utc).isoformat()
@@ -834,8 +849,8 @@ class TradingBot:
         if not self.current_position:
             return
 
-        # In ST+MACD histogram mode, trailing SL is managed by SuperTrend on candle-close.
-        # Keep this method from overriding it with step-based trailing settings.
+        # In ST+MACD histogram mode, trailing SL is primarily SuperTrend-driven on candle-close.
+        # However, we also support profit-lock + step trailing to progressively lock more profit.
         if bot_state.get('strategy_mode') == 'st_macd_hist':
             # Fallback safety: if trailing_sl wasn't initialized for some reason, use configured initial_stoploss.
             if self.trailing_sl is None:
@@ -890,6 +905,117 @@ class TradingBot:
                 # This is the first trailing activation
                 logger.info(f"[SL] Trailing started: {new_sl:.2f} (Profit: {profit_points:.2f} pts)")
 
+    def _apply_profit_lock_and_step_trailing(self, current_ltp: float) -> None:
+        """Apply profit lock (trail_start_profit) and optional step trailing (trail_step).
+
+        Designed for ST+MACD mode so that:
+        - Profit is locked once price moves favorably by `trail_start_profit` points.
+        - Thereafter, SL can be raised in steps without fighting SuperTrend (we only ever raise SL).
+
+                Behavior when `trail_step` > 0:
+                - SL starts at entry+lock.
+                - Then SL “steps up” to the current stepped profit level (no buffer).
+        """
+        if not self.current_position:
+            return
+        if self.entry_price <= 0:
+            return
+
+        try:
+            current_ltp = float(current_ltp or 0.0)
+        except Exception:
+            return
+
+        if current_ltp <= 0:
+            return
+
+        lock_points = float(config.get('trail_start_profit', 0) or 0)
+        if lock_points <= 0:
+            return
+
+        profit_points = current_ltp - float(self.entry_price)
+        if profit_points < lock_points:
+            return
+
+        # Track highest profit reached (used for step-based trailing)
+        if profit_points > float(self.highest_profit or 0.0):
+            self.highest_profit = float(profit_points)
+
+        lock_sl = float(self.entry_price) + float(lock_points)
+        new_sl = lock_sl
+
+        trail_step = float(config.get('trail_step', 0) or 0)
+        if trail_step > 0:
+            # Step logic: after lock activates, raise SL to match the stepped profit level.
+            # Example: lock=10, step=5
+            # profit 10..14 => SL = entry+10
+            # profit 15..19 => SL = entry+15
+            # profit 20..24 => SL = entry+20
+            levels = int((float(self.highest_profit) - float(lock_points)) / float(trail_step))
+            step_sl = float(self.entry_price) + float(lock_points) + (max(0, levels) * float(trail_step))
+            new_sl = max(new_sl, step_sl)
+
+        if self.trailing_sl is None:
+            self.trailing_sl = float(new_sl)
+        else:
+            self.trailing_sl = max(float(self.trailing_sl), float(new_sl))
+
+        bot_state['trailing_sl'] = self.trailing_sl
+
+    def _update_live_indicator_preview(self) -> None:
+        """Update UI-facing indicator values every loop using the *current forming* option candle.
+
+        This computes a non-mutating preview (clone + add_candle) so indicators update every second
+        without double-counting candles or impacting trading decisions (which remain candle-close).
+        """
+        if bot_state.get('strategy_mode') != 'st_macd_hist':
+            return
+
+        # Ensure indicators exist
+        self.apply_strategy_config()
+
+        # CE preview
+        if self._ce_high > 0 and self._ce_low < float('inf') and self._ce_close > 0:
+            try:
+                st = copy.deepcopy(self.opt_ce_st)
+                macd = copy.deepcopy(self.opt_ce_macd)
+                st_value, _ = st.add_candle(float(self._ce_high), float(self._ce_low), float(self._ce_close))
+                st_dir = getattr(st, 'direction', None)
+                macd_value, _ = macd.add_candle(float(self._ce_high), float(self._ce_low), float(self._ce_close))
+                hist = getattr(macd, 'last_histogram', None)
+
+                if isinstance(st_value, (int, float)):
+                    bot_state['signal_ce_supertrend_value'] = float(st_value)
+                if st_dir in (1, -1):
+                    bot_state['signal_ce_supertrend_signal'] = 'GREEN' if st_dir == 1 else 'RED'
+                if isinstance(macd_value, (int, float)):
+                    bot_state['signal_ce_macd_value'] = float(macd_value)
+                if isinstance(hist, (int, float)):
+                    bot_state['signal_ce_macd_hist'] = float(hist)
+            except Exception:
+                pass
+
+        # PE preview
+        if self._pe_high > 0 and self._pe_low < float('inf') and self._pe_close > 0:
+            try:
+                st = copy.deepcopy(self.opt_pe_st)
+                macd = copy.deepcopy(self.opt_pe_macd)
+                st_value, _ = st.add_candle(float(self._pe_high), float(self._pe_low), float(self._pe_close))
+                st_dir = getattr(st, 'direction', None)
+                macd_value, _ = macd.add_candle(float(self._pe_high), float(self._pe_low), float(self._pe_close))
+                hist = getattr(macd, 'last_histogram', None)
+
+                if isinstance(st_value, (int, float)):
+                    bot_state['signal_pe_supertrend_value'] = float(st_value)
+                if st_dir in (1, -1):
+                    bot_state['signal_pe_supertrend_signal'] = 'GREEN' if st_dir == 1 else 'RED'
+                if isinstance(macd_value, (int, float)):
+                    bot_state['signal_pe_macd_value'] = float(macd_value)
+                if isinstance(hist, (int, float)):
+                    bot_state['signal_pe_macd_hist'] = float(hist)
+            except Exception:
+                pass
+
     
     async def check_trailing_sl_on_close(self, current_ltp: float) -> bool:
         """Check if trailing SL or target is hit on candle close"""
@@ -911,7 +1037,12 @@ class TradingBot:
             return True
         
         # Update trailing SL
-        await self.check_trailing_sl(current_ltp)
+        # In ST+MACD histogram mode, trailing is SuperTrend-driven, but we still
+        # want profit-lock + optional step trailing (trail_start_profit + trail_step) to apply.
+        if bot_state.get('strategy_mode') == 'st_macd_hist':
+            self._apply_profit_lock_and_step_trailing(current_ltp)
+        else:
+            await self.check_trailing_sl(current_ltp)
         
         # Check trailing SL
         if self.trailing_sl and current_ltp <= self.trailing_sl:
@@ -961,7 +1092,10 @@ class TradingBot:
             return True
         
         # Update trailing SL values
-        await self.check_trailing_sl(current_ltp)
+        if bot_state.get('strategy_mode') == 'st_macd_hist':
+            self._apply_profit_lock_and_step_trailing(current_ltp)
+        else:
+            await self.check_trailing_sl(current_ltp)
         
         # Check if trailing SL is breached
         if self.trailing_sl and current_ltp <= self.trailing_sl:

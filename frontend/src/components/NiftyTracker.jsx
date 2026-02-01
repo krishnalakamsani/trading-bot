@@ -69,6 +69,12 @@ const NiftyTracker = () => {
   const peStSig = marketData.signal_pe_supertrend_signal;
   const ceHist = typeof marketData.signal_ce_macd_hist === "number" ? marketData.signal_ce_macd_hist : 0;
   const peHist = typeof marketData.signal_pe_macd_hist === "number" ? marketData.signal_pe_macd_hist : 0;
+  const ceStValue = typeof marketData.signal_ce_supertrend_value === "number" ? marketData.signal_ce_supertrend_value : 0;
+  const peStValue = typeof marketData.signal_pe_supertrend_value === "number" ? marketData.signal_pe_supertrend_value : 0;
+  const ceMacd = typeof marketData.signal_ce_macd_value === "number" ? marketData.signal_ce_macd_value : 0;
+  const peMacd = typeof marketData.signal_pe_macd_value === "number" ? marketData.signal_pe_macd_value : 0;
+
+  const colorFromSig = (sig) => (sig === "GREEN" ? "#059669" : sig === "RED" ? "#DC2626" : "#111827");
 
   return (
     <div className="terminal-card" data-testid="nifty-tracker">
@@ -98,43 +104,60 @@ const NiftyTracker = () => {
             </p>
           </div>
 
-          {/* SuperTrend */}
+          {/* SuperTrend (CE/PE) */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-sm border border-gray-200">
             <div>
-              <p className="label-text text-xs mb-1">SuperTrend</p>
-              <p className="text-xl font-mono font-bold" style={{ color: isGreen ? "#059669" : "#DC2626" }} data-testid="supertrend-value">
-                {marketData.supertrend_value > 0
-                  ? marketData.supertrend_value.toLocaleString("en-IN", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })
-                  : "—"}
-              </p>
+              <p className="label-text text-xs mb-1">SuperTrend (CE / PE)</p>
+              <div className="space-y-0.5">
+                <p className="text-sm font-mono font-bold" style={{ color: colorFromSig(ceStSig) }}>
+                  CE: {ceStValue > 0 ? ceStValue.toFixed(2) : "—"}
+                </p>
+                <p className="text-sm font-mono font-bold" style={{ color: colorFromSig(peStSig) }}>
+                  PE: {peStValue > 0 ? peStValue.toFixed(2) : "—"}
+                </p>
+              </div>
             </div>
-            <Circle className="w-4 h-4 flex-shrink-0" style={{ fill: isGreen ? "#059669" : "#DC2626", color: isGreen ? "#059669" : "#DC2626" }} />
+            <div className="flex flex-col gap-2 items-center justify-center">
+              <Circle
+                className="w-3 h-3"
+                style={{ fill: colorFromSig(ceStSig), color: colorFromSig(ceStSig) }}
+                title={`CE ST: ${ceStSig || "—"}`}
+              />
+              <Circle
+                className="w-3 h-3"
+                style={{ fill: colorFromSig(peStSig), color: colorFromSig(peStSig) }}
+                title={`PE ST: ${peStSig || "—"}`}
+              />
+            </div>
           </div>
 
-          {/* MACD Histogram */}
+          {/* MACD Histogram (CE/PE) */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-sm border border-gray-200">
             <div>
-              <p className="label-text text-xs mb-1">MACD Hist</p>
-              <p className="text-xl font-mono font-bold text-gray-900">
-                {typeof marketData.macd_hist === "number" && marketData.macd_hist !== 0
-                  ? marketData.macd_hist.toFixed(4)
-                  : "—"}
-              </p>
+              <p className="label-text text-xs mb-1">MACD Hist (CE / PE)</p>
+              <div className="space-y-0.5">
+                <p className="text-sm font-mono font-bold text-gray-900">
+                  CE: {typeof ceHist === "number" && ceHist !== 0 ? ceHist.toFixed(4) : "—"}
+                </p>
+                <p className="text-sm font-mono font-bold text-gray-900">
+                  PE: {typeof peHist === "number" && peHist !== 0 ? peHist.toFixed(4) : "—"}
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* MACD */}
+          {/* MACD (CE/PE) */}
           <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-sm border border-gray-200">
             <div>
-              <p className="label-text text-xs mb-1">MACD</p>
-              <p className="text-xl font-mono font-bold text-gray-900">
-                {typeof marketData.macd_value === "number" && marketData.macd_value !== 0
-                  ? marketData.macd_value.toFixed(4)
-                  : "—"}
-              </p>
+              <p className="label-text text-xs mb-1">MACD (CE / PE)</p>
+              <div className="space-y-0.5">
+                <p className="text-sm font-mono font-bold text-gray-900">
+                  CE: {typeof ceMacd === "number" && ceMacd !== 0 ? ceMacd.toFixed(4) : "—"}
+                </p>
+                <p className="text-sm font-mono font-bold text-gray-900">
+                  PE: {typeof peMacd === "number" && peMacd !== 0 ? peMacd.toFixed(4) : "—"}
+                </p>
+              </div>
             </div>
           </div>
         </div>

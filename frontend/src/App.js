@@ -84,8 +84,15 @@ function App() {
     lot_size: 65,
     strike_interval: 50,
 
+    // Market-hours overrides
+    allow_weekend_trading: false,
+
+    // Indicator defaults (SuperTrend)
+    supertrend_period: 7,
+    supertrend_multiplier: 4,
+
     // Strategy / Agent
-    strategy_mode: "agent",
+    strategy_mode: "st_macd_hist",
     agent_adx_min: 20.0,
     agent_wave_reset_macd_abs: 0.05,
     persist_agent_state: true

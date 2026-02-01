@@ -93,6 +93,8 @@ def get_market_data() -> dict:
         "signal_pe_supertrend_signal": bot_state.get('signal_pe_supertrend_signal'),
         "signal_ce_supertrend_value": bot_state.get('signal_ce_supertrend_value', 0.0),
         "signal_pe_supertrend_value": bot_state.get('signal_pe_supertrend_value', 0.0),
+        "signal_ce_macd_value": bot_state.get('signal_ce_macd_value', 0.0),
+        "signal_pe_macd_value": bot_state.get('signal_pe_macd_value', 0.0),
         "signal_ce_macd_hist": bot_state.get('signal_ce_macd_hist', 0.0),
         "signal_pe_macd_hist": bot_state.get('signal_pe_macd_hist', 0.0),
         # Fixed-contract metadata
@@ -491,6 +493,12 @@ def get_strategy_status() -> dict:
             "supertrend_value": bot_state.get('supertrend_value', 0.0),
             "macd_value": bot_state.get('macd_value', 0.0),
             "macd_hist": bot_state.get('macd_hist', 0.0),
+            "signal_ce_supertrend_value": bot_state.get('signal_ce_supertrend_value', 0.0),
+            "signal_pe_supertrend_value": bot_state.get('signal_pe_supertrend_value', 0.0),
+            "signal_ce_macd_value": bot_state.get('signal_ce_macd_value', 0.0),
+            "signal_pe_macd_value": bot_state.get('signal_pe_macd_value', 0.0),
+            "signal_ce_macd_hist": bot_state.get('signal_ce_macd_hist', 0.0),
+            "signal_pe_macd_hist": bot_state.get('signal_pe_macd_hist', 0.0),
         },
         "position": {
             "in_position": bool(bot_state.get('current_position')),

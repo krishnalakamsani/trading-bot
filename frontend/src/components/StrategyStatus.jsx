@@ -7,9 +7,12 @@ const StrategyStatus = () => {
 
   const mode = strategyStatus?.strategy_mode || "—";
   const rules = strategyStatus?.rules;
-  const st = strategyStatus?.indicators?.supertrend_value;
-  const macd = strategyStatus?.indicators?.macd_value;
-  const hist = strategyStatus?.indicators?.macd_hist;
+  const ceSt = strategyStatus?.indicators?.signal_ce_supertrend_value;
+  const peSt = strategyStatus?.indicators?.signal_pe_supertrend_value;
+  const ceMacd = strategyStatus?.indicators?.signal_ce_macd_value;
+  const peMacd = strategyStatus?.indicators?.signal_pe_macd_value;
+  const ceHist = strategyStatus?.indicators?.signal_ce_macd_hist;
+  const peHist = strategyStatus?.indicators?.signal_pe_macd_hist;
 
   return (
     <div className="terminal-card" data-testid="strategy-status">
@@ -28,23 +31,26 @@ const StrategyStatus = () => {
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-gray-50 rounded-sm p-3 border border-gray-100">
             <p className="label-text mb-1">SuperTrend</p>
-            <p className="value-text font-mono">
-              {typeof st === "number" && st > 0 ? st.toFixed(2) : "—"}
-            </p>
+            <div className="space-y-0.5">
+              <p className="value-text font-mono">CE: {typeof ceSt === "number" && ceSt > 0 ? ceSt.toFixed(2) : "—"}</p>
+              <p className="value-text font-mono">PE: {typeof peSt === "number" && peSt > 0 ? peSt.toFixed(2) : "—"}</p>
+            </div>
           </div>
 
           <div className="bg-gray-50 rounded-sm p-3 border border-gray-100">
             <p className="label-text mb-1">MACD</p>
-            <p className="value-text font-mono">
-              {typeof macd === "number" && macd !== 0 ? macd.toFixed(4) : "—"}
-            </p>
+            <div className="space-y-0.5">
+              <p className="value-text font-mono">CE: {typeof ceMacd === "number" && ceMacd !== 0 ? ceMacd.toFixed(4) : "—"}</p>
+              <p className="value-text font-mono">PE: {typeof peMacd === "number" && peMacd !== 0 ? peMacd.toFixed(4) : "—"}</p>
+            </div>
           </div>
 
           <div className="bg-gray-50 rounded-sm p-3 border border-gray-100">
             <p className="label-text mb-1">MACD Hist</p>
-            <p className="value-text font-mono">
-              {typeof hist === "number" && hist !== 0 ? hist.toFixed(4) : "—"}
-            </p>
+            <div className="space-y-0.5">
+              <p className="value-text font-mono">CE: {typeof ceHist === "number" && ceHist !== 0 ? ceHist.toFixed(4) : "—"}</p>
+              <p className="value-text font-mono">PE: {typeof peHist === "number" && peHist !== 0 ? peHist.toFixed(4) : "—"}</p>
+            </div>
           </div>
         </div>
 

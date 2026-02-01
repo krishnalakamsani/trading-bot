@@ -365,7 +365,7 @@ const Settings = () => {
           <TabsContent value="strategy" className="space-y-4 mt-6 bg-white p-6 rounded-lg border border-gray-200">
             <div className="space-y-4">
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-sm text-xs text-blue-800">
-                <strong>Strategy</strong>: Fixed to <strong>SuperTrend + MACD Histogram</strong> on fixed ATM option candles (5s).
+                <strong>Strategy</strong>: <strong>SuperTrend + MACD Histogram</strong> on fixed ATM option candles (uses your selected timeframe).
               </div>
 
               <div className="text-xs text-gray-600 space-y-1">
