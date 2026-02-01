@@ -1,6 +1,7 @@
 # Bot Service - Interface layer between API routes and TradingBot
 import logging
 from typing import Optional
+import time
 from config import bot_state, config
 from indices import get_index_config, get_available_indices
 from database import save_config, load_config
@@ -9,6 +10,10 @@ logger = logging.getLogger(__name__)
 
 # Lazy import to avoid circular imports
 _trading_bot = None
+
+# Throttle market-data refresh for polling callers.
+_last_market_refresh_ts = 0.0
+_market_refresh_interval_sec = 2.0
 
 def get_trading_bot():
     """Get or create the trading bot instance"""
@@ -102,6 +107,107 @@ def get_market_data() -> dict:
         "selected_index": config['selected_index'],
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+async def get_market_data_live() -> dict:
+    """Get market data and (best-effort) refresh live CE/PE prices.
+
+    This is used by the UI polling path. It updates bot_state with:
+    - index_ltp
+    - fixed contract IDs (if missing)
+    - signal_ce_ltp/signal_pe_ltp using quote_data with option-chain fallback
+    """
+    global _last_market_refresh_ts
+
+    now = time.time()
+    if now - _last_market_refresh_ts < _market_refresh_interval_sec:
+        return get_market_data()
+    _last_market_refresh_ts = now
+
+    bot = get_trading_bot()
+    index_name = str(config.get('selected_index') or 'NIFTY').upper()
+
+    # Ensure Dhan is initialized (best-effort; do not fail the endpoint).
+    if not getattr(bot, 'dhan', None):
+        try:
+            bot.initialize_dhan()
+        except Exception:
+            return get_market_data()
+
+    try:
+        # Refresh index LTP
+        try:
+            idx = bot.dhan.get_index_ltp(index_name)
+            if idx and float(idx) > 0:
+                bot_state['index_ltp'] = float(idx)
+        except Exception:
+            pass
+
+        # Ensure fixed contract exists
+        if not (bot_state.get('fixed_ce_security_id') and bot_state.get('fixed_pe_security_id')):
+            try:
+                await bot._ensure_fixed_option_contract(index_name, float(bot_state.get('index_ltp', 0.0) or 0.0))
+            except Exception:
+                pass
+
+        ce_sid = bot_state.get('fixed_ce_security_id')
+        pe_sid = bot_state.get('fixed_pe_security_id')
+        fixed_strike = bot_state.get('fixed_option_strike')
+        fixed_expiry = bot_state.get('fixed_option_expiry')
+
+        ids: list[int] = []
+        for x in (ce_sid, pe_sid):
+            if x:
+                try:
+                    ids.append(int(x))
+                except Exception:
+                    pass
+
+        if ids:
+            # Try quote_data first
+            try:
+                idx2, option_ltps = bot.dhan.get_index_and_options_ltp(index_name, ids)
+                if idx2 and float(idx2) > 0:
+                    bot_state['index_ltp'] = float(idx2)
+            except Exception:
+                option_ltps = {}
+
+            # Fallback to option-chain-derived LTPs (works even when quote_data fails)
+            if fixed_strike and fixed_expiry:
+                for sid, opt_type in ((ce_sid, 'CE'), (pe_sid, 'PE')):
+                    if not sid:
+                        continue
+                    try:
+                        current = float(option_ltps.get(int(sid), 0.0) or 0.0)
+                    except Exception:
+                        current = 0.0
+                    if current <= 0:
+                        try:
+                            current = float(
+                                await bot.dhan.get_option_ltp(
+                                    str(sid),
+                                    strike=int(fixed_strike),
+                                    option_type=opt_type,
+                                    expiry=str(fixed_expiry),
+                                    index_name=index_name,
+                                )
+                                or 0.0
+                            )
+                        except Exception:
+                            current = 0.0
+
+                    if current > 0:
+                        current = round(float(current) / 0.05) * 0.05
+                        if opt_type == 'CE':
+                            bot_state['signal_ce_ltp'] = round(float(current), 2)
+                        else:
+                            bot_state['signal_pe_ltp'] = round(float(current), 2)
+
+    except Exception:
+        # Never fail UI polling due to refresh errors.
+        pass
+
+    return get_market_data()
 
 
 async def debug_quotes() -> dict:

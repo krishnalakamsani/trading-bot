@@ -97,7 +97,7 @@ async def get_status():
 @api_router.get("/market/nifty")
 async def get_market_data():
     """Get market data (index LTP, SuperTrend)"""
-    return bot_service.get_market_data()
+    return await bot_service.get_market_data_live()
 
 
 @api_router.get("/position")
