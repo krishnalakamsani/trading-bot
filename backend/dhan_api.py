@@ -126,13 +126,20 @@ class DhanAPI:
             fno_segment = str(index_config.get("fno_segment", "NSE_FNO"))
 
             ids = [int(x) for x in option_security_ids if int(x) > 0]
-            def _fetch_with_fno_seg(fno_seg: str):
+
+            def _fetch_combined(fno_seg: str):
+                # Some broker setups reject combined segment+FNO quotes; we will fall back.
                 return self.dhan.quote_data({
                     segment: [security_id],
                     fno_seg: ids,
                 })
 
-            response = _fetch_with_fno_seg(fno_segment)
+            def _fetch_options_only(fno_seg: str):
+                return self.dhan.quote_data({
+                    fno_seg: ids,
+                })
+
+            response = _fetch_combined(fno_segment)
 
             def _parse(resp: dict, used_fno_seg: str) -> None:
                 nonlocal index_ltp, option_ltps
@@ -157,6 +164,24 @@ class DhanAPI:
 
             _parse(response, fno_segment)
 
+            # If combined quote failed or produced no usable option prices, fall back to an
+            # options-only quote. This matches what get_option_ltp() does and often works
+            # when combined quotes are rejected.
+            combined_status = (response or {}).get('status') if isinstance(response, dict) else None
+            if (
+                combined_status != 'success'
+                or (not option_ltps)
+                or all((not v or v <= 0) for v in option_ltps.values())
+            ):
+                try:
+                    opt_only_resp = _fetch_options_only(fno_segment)
+                    option_ltps = {}
+                    _parse(opt_only_resp, fno_segment)
+                    if option_ltps and any((v and v > 0) for v in option_ltps.values()):
+                        response = opt_only_resp
+                except Exception:
+                    pass
+
             # If no option prices came back, occasionally retry with common alternate keys.
             # This avoids hammering the API on every tick.
             if (not option_ltps) or all((not v or v <= 0) for v in option_ltps.values()):
@@ -171,9 +196,17 @@ class DhanAPI:
 
                     for alt in alt_segments:
                         try:
-                            alt_resp = _fetch_with_fno_seg(alt)
+                            # Try combined first, then options-only.
+                            alt_resp = _fetch_combined(alt)
                             option_ltps = {}
                             _parse(alt_resp, alt)
+
+                            if (not option_ltps) or all((not v or v <= 0) for v in option_ltps.values()):
+                                alt_resp2 = _fetch_options_only(alt)
+                                option_ltps = {}
+                                _parse(alt_resp2, alt)
+                                alt_resp = alt_resp2
+
                             if option_ltps and any((v and v > 0) for v in option_ltps.values()):
                                 # Swap response for debug logging context
                                 response = alt_resp
@@ -193,7 +226,7 @@ class DhanAPI:
                     if missing or zero or (index_ltp and index_ltp > 0):
                         opts_str = ", ".join([f"{sid}={option_ltps.get(sid, 0.0):.2f}" for sid in ids])
                         logger.info(
-                            "[QUOTE][DBG] %s idx=%.2f seg=%s fno=%s opts={%s} missing=%s zero=%s status=%s",
+                            "[QUOTE][DBG] %s idx=%.2f seg=%s fno=%s opts={%s} missing=%s zero=%s status=%s remarks=%s",
                             index_name,
                             float(index_ltp or 0.0),
                             segment,
@@ -202,6 +235,7 @@ class DhanAPI:
                             missing,
                             zero,
                             (response or {}).get("status") if isinstance(response, dict) else None,
+                            (response or {}).get("remarks") if isinstance(response, dict) else None,
                         )
                     self._last_debug_quotes_log_ts = now_ts
         except Exception as e:

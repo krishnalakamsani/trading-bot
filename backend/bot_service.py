@@ -220,6 +220,9 @@ async def debug_quotes() -> dict:
             payload[segment] = [index_security_id]
         response = bot.dhan.dhan.quote_data(payload)
 
+        # Also try an options-only quote (helps when combined segment+FNO is rejected)
+        response_options_only = bot.dhan.dhan.quote_data({fno_segment: ids})
+
         data = (response or {}).get('data', {}) if isinstance(response, dict) else {}
         if isinstance(data, dict) and 'data' in data:
             data = data.get('data', {})
@@ -248,6 +251,18 @@ async def debug_quotes() -> dict:
         missing = [sid for sid in ids if sid not in option_ltps]
         zero = [sid for sid, v in option_ltps.items() if not v or v <= 0]
 
+        # Parse the options-only response too
+        data2 = (response_options_only or {}).get('data', {}) if isinstance(response_options_only, dict) else {}
+        if isinstance(data2, dict) and 'data' in data2:
+            data2 = data2.get('data', {})
+        fno_map2 = data2.get(fno_segment, {}) if isinstance(data2, dict) else {}
+        option_ltps_options_only: dict[int, float] = {}
+        if isinstance(fno_map2, dict):
+            for sid in ids:
+                entry2 = fno_map2.get(str(sid), {}) or {}
+                if isinstance(entry2, dict):
+                    option_ltps_options_only[sid] = float(entry2.get('last_price', 0) or 0)
+
         return {
             "status": "success",
             "meta": {
@@ -265,10 +280,16 @@ async def debug_quotes() -> dict:
                 "missing": missing,
                 "zero": zero,
                 "broker_status": (response or {}).get('status') if isinstance(response, dict) else None,
+                "broker_remarks": (response or {}).get('remarks') if isinstance(response, dict) else None,
+                "broker_error_code": (response or {}).get('error_code') if isinstance(response, dict) else None,
+                "broker_message": (response or {}).get('message') if isinstance(response, dict) else None,
+                "broker_status_options_only": (response_options_only or {}).get('status') if isinstance(response_options_only, dict) else None,
+                "broker_remarks_options_only": (response_options_only or {}).get('remarks') if isinstance(response_options_only, dict) else None,
             },
             "quotes": {
                 "index_ltp": float(index_ltp or 0.0),
                 "option_ltps": option_ltps,
+                "option_ltps_options_only": option_ltps_options_only,
                 "bot_state_index_ltp": float(bot_state.get('index_ltp') or 0.0),
                 "bot_state_signal_ce_ltp": bot_state.get('signal_ce_ltp', 0.0),
                 "bot_state_signal_pe_ltp": bot_state.get('signal_pe_ltp', 0.0),
