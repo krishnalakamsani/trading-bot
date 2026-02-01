@@ -28,6 +28,9 @@ class DhanAPI:
         except Exception:
             self._debug_quotes_interval_sec = 10
         self._last_debug_quotes_log_ts = 0.0
+
+        # Fallback throttling for quote segment retries
+        self._last_multi_quote_fallback_ts = 0.0
     
     def get_index_ltp(self, index_name: str = "NIFTY") -> float:
         """Get index spot LTP"""
@@ -123,13 +126,20 @@ class DhanAPI:
             fno_segment = str(index_config.get("fno_segment", "NSE_FNO"))
 
             ids = [int(x) for x in option_security_ids if int(x) > 0]
-            response = self.dhan.quote_data({
-                segment: [security_id],
-                fno_segment: ids,
-            })
+            def _fetch_with_fno_seg(fno_seg: str):
+                return self.dhan.quote_data({
+                    segment: [security_id],
+                    fno_seg: ids,
+                })
 
-            if response and response.get('status') == 'success':
-                data = response.get('data', {})
+            response = _fetch_with_fno_seg(fno_segment)
+
+            def _parse(resp: dict, used_fno_seg: str) -> None:
+                nonlocal index_ltp, option_ltps
+                if not (resp and isinstance(resp, dict) and resp.get('status') == 'success'):
+                    return
+
+                data = resp.get('data', {})
                 if isinstance(data, dict) and 'data' in data:
                     data = data.get('data', {})
 
@@ -137,13 +147,40 @@ class DhanAPI:
                 if idx_data:
                     index_ltp = float(idx_data.get('last_price', 0) or 0)
 
-                fno_map = data.get(fno_segment, {})
+                fno_map = data.get(used_fno_seg, {})
                 if isinstance(fno_map, dict):
                     for sid in ids:
                         o = fno_map.get(str(sid), {})
                         if o:
                             ltp = float(o.get('last_price', 0) or 0)
                             option_ltps[sid] = ltp
+
+            _parse(response, fno_segment)
+
+            # If no option prices came back, occasionally retry with common alternate keys.
+            # This avoids hammering the API on every tick.
+            if (not option_ltps) or all((not v or v <= 0) for v in option_ltps.values()):
+                now_ts = time.time()
+                if (now_ts - float(self._last_multi_quote_fallback_ts or 0.0)) >= 30.0:
+                    self._last_multi_quote_fallback_ts = now_ts
+                    alt_segments = []
+                    # Put likely candidates early; keep original first (already tried).
+                    for s in ("NSE_FNO", "NFO", "NSE_FO", "BSE_FNO"):
+                        if s and s not in alt_segments and s != fno_segment:
+                            alt_segments.append(s)
+
+                    for alt in alt_segments:
+                        try:
+                            alt_resp = _fetch_with_fno_seg(alt)
+                            option_ltps = {}
+                            _parse(alt_resp, alt)
+                            if option_ltps and any((v and v > 0) for v in option_ltps.values()):
+                                # Swap response for debug logging context
+                                response = alt_resp
+                                fno_segment = alt
+                                break
+                        except Exception:
+                            continue
 
             # Diagnostics: when enabled, periodically log the quote mapping.
             # Useful to confirm whether Dhan returned 0 vs. parsing/mapping issues.

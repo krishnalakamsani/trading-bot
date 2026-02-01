@@ -140,26 +140,8 @@ async def debug_quotes() -> dict:
         fno_segment = str(idx_cfg.get('fno_segment') or 'NSE_FNO')
         index_security_id = int(idx_cfg.get('security_id') or 0)
 
-        index_ltp = float(bot.dhan.get_index_ltp(index_name) or 0.0)
-        if not index_ltp or index_ltp <= 0:
-            return {
-                "status": "error",
-                "message": "Index LTP returned 0; cannot select fixed ATM contracts.",
-                "meta": {
-                    "index_name": index_name,
-                    "segment": segment,
-                    "index_security_id": index_security_id,
-                    "current_time_ist": ist.strftime('%H:%M:%S'),
-                    "market_open": bool(is_market_open()),
-                },
-            }
-
-        # Ensure fixed contracts exist (strike/expiry/security IDs)
-        try:
-            fixed_ready = await bot._ensure_fixed_option_contract(index_name, float(index_ltp))
-        except Exception:
-            fixed_ready = False
-
+        # Read any existing fixed contract IDs first (these may already be available even
+        # if index last_price is temporarily 0 on special sessions).
         ce_sid = bot_state.get('fixed_ce_security_id')
         pe_sid = bot_state.get('fixed_pe_security_id')
         ids: list[int] = []
@@ -170,28 +152,73 @@ async def debug_quotes() -> dict:
                 except Exception:
                     pass
 
-        if not fixed_ready or not ids:
-            return {
-                "status": "error",
-                "message": "Fixed option contracts are not ready (missing CE/PE security IDs).",
-                "meta": {
-                    "index_name": index_name,
-                    "index_ltp": index_ltp,
-                    "fixed_ready": bool(fixed_ready),
-                    "fixed_option_strike": bot_state.get('fixed_option_strike'),
-                    "fixed_option_expiry": bot_state.get('fixed_option_expiry'),
-                    "fixed_ce_security_id": ce_sid,
-                    "fixed_pe_security_id": pe_sid,
-                    "current_time_ist": ist.strftime('%H:%M:%S'),
-                    "market_open": bool(is_market_open()),
-                },
-            }
+        # If fixed IDs are not present, attempt to derive them (requires a valid index LTP).
+        fixed_ready = bool(ids)
+        index_ltp = float(bot_state.get('index_ltp') or 0.0)
+        if not fixed_ready:
+            try:
+                derived_index_ltp = float(bot.dhan.get_index_ltp(index_name) or 0.0)
+            except Exception:
+                derived_index_ltp = 0.0
+            if derived_index_ltp and derived_index_ltp > 0:
+                index_ltp = float(derived_index_ltp)
+
+            if not index_ltp or index_ltp <= 0:
+                return {
+                    "status": "error",
+                    "message": "Index LTP returned 0; cannot select fixed ATM contracts.",
+                    "meta": {
+                        "index_name": index_name,
+                        "segment": segment,
+                        "index_security_id": index_security_id,
+                        "current_time_ist": ist.strftime('%H:%M:%S'),
+                        "market_open": bool(is_market_open()),
+                        "allow_weekend_trading": bool(config.get('allow_weekend_trading', False)),
+                        "bot_state_index_ltp": float(bot_state.get('index_ltp') or 0.0),
+                    },
+                }
+
+            try:
+                fixed_ready = await bot._ensure_fixed_option_contract(index_name, float(index_ltp))
+            except Exception:
+                fixed_ready = False
+
+            ce_sid = bot_state.get('fixed_ce_security_id')
+            pe_sid = bot_state.get('fixed_pe_security_id')
+            ids = []
+            for x in (ce_sid, pe_sid):
+                if x:
+                    try:
+                        ids.append(int(x))
+                    except Exception:
+                        pass
+
+            if not fixed_ready or not ids:
+                return {
+                    "status": "error",
+                    "message": "Fixed option contracts are not ready (missing CE/PE security IDs).",
+                    "meta": {
+                        "index_name": index_name,
+                        "index_ltp": float(index_ltp or 0.0),
+                        "fixed_ready": bool(fixed_ready),
+                        "fixed_option_strike": bot_state.get('fixed_option_strike'),
+                        "fixed_option_expiry": bot_state.get('fixed_option_expiry'),
+                        "fixed_ce_security_id": ce_sid,
+                        "fixed_pe_security_id": pe_sid,
+                        "current_time_ist": ist.strftime('%H:%M:%S'),
+                        "market_open": bool(is_market_open()),
+                        "allow_weekend_trading": bool(config.get('allow_weekend_trading', False)),
+                        "bot_state_index_ltp": float(bot_state.get('index_ltp') or 0.0),
+                    },
+                }
 
         # Perform a single broker quote call and parse only required fields.
-        response = bot.dhan.dhan.quote_data({
-            segment: [index_security_id],
-            fno_segment: ids,
-        })
+        # Perform a single broker quote call.
+        # Some special sessions may not provide index last_price in IDX_I; option quotes are still useful.
+        payload = {fno_segment: ids}
+        if index_security_id and index_security_id > 0:
+            payload[segment] = [index_security_id]
+        response = bot.dhan.dhan.quote_data(payload)
 
         data = (response or {}).get('data', {}) if isinstance(response, dict) else {}
         if isinstance(data, dict) and 'data' in data:
@@ -242,6 +269,7 @@ async def debug_quotes() -> dict:
             "quotes": {
                 "index_ltp": float(index_ltp or 0.0),
                 "option_ltps": option_ltps,
+                "bot_state_index_ltp": float(bot_state.get('index_ltp') or 0.0),
                 "bot_state_signal_ce_ltp": bot_state.get('signal_ce_ltp', 0.0),
                 "bot_state_signal_pe_ltp": bot_state.get('signal_pe_ltp', 0.0),
             },
