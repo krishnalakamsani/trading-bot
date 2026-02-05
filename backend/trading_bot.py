@@ -1058,178 +1058,178 @@ class TradingBot:
                         ce_ready = self._ce_high > 0 and self._ce_low < float('inf') and self._ce_close > 0
                         pe_ready = self._pe_high > 0 and self._pe_low < float('inf') and self._pe_close > 0
                         if ce_ready or pe_ready:
-                        # Check trailing SL/Target on candle close (additional safety)
-                        if self.current_position:
-                            option_ltp = bot_state['current_option_ltp']
-                            sl_hit = await self.check_trailing_sl_on_close(option_ltp)
-                            if sl_hit:
+                            # Check trailing SL/Target on candle close (additional safety)
+                            if self.current_position:
+                                option_ltp = bot_state['current_option_ltp']
+                                sl_hit = await self.check_trailing_sl_on_close(option_ltp)
+                                if sl_hit:
+                                    self.last_exit_candle_time = current_candle_time
+
+                            # Fixed-contract option-candle signals: ST + MACD Histogram
+                            self.apply_strategy_config()
+
+                            strike = bot_state.get('fixed_option_strike')
+                            expiry = bot_state.get('fixed_option_expiry')
+                            ce_sid = bot_state.get('fixed_ce_security_id')
+                            pe_sid = bot_state.get('fixed_pe_security_id')
+
+                            # Compute CE indicators (if candle ready)
+                            ce_st_value = None
+                            ce_st_dir = None
+                            ce_hist = None
+                            if ce_ready:
+                                ce_st_value, _ = self.opt_ce_st.add_candle(self._ce_high, self._ce_low, self._ce_close)
+                                ce_st_dir = getattr(self.opt_ce_st, 'direction', None)
+                                ce_macd, _ = self.opt_ce_macd.add_candle(self._ce_high, self._ce_low, self._ce_close)
+                                if ce_macd is not None:
+                                    self._opt_ce_last_macd_value = ce_macd
+                                ce_hist = getattr(self.opt_ce_macd, 'last_histogram', None)
+
+                                if isinstance(ce_hist, (int, float)):
+                                    self._opt_ce_hist_window.append(float(ce_hist))
+
+                                # Publish per-option indicator values for UI/debug
+                                bot_state['signal_ce_supertrend_value'] = float(ce_st_value) if isinstance(ce_st_value, (int, float)) else bot_state.get('signal_ce_supertrend_value', 0.0)
+                                bot_state['signal_ce_supertrend_signal'] = 'GREEN' if ce_st_dir == 1 else ('RED' if ce_st_dir == -1 else bot_state.get('signal_ce_supertrend_signal'))
+                                bot_state['signal_ce_macd_value'] = float(ce_macd) if isinstance(ce_macd, (int, float)) else bot_state.get('signal_ce_macd_value', 0.0)
+                                bot_state['signal_ce_macd_hist'] = float(ce_hist) if isinstance(ce_hist, (int, float)) else bot_state.get('signal_ce_macd_hist', 0.0)
+
+                            # Compute PE indicators (if candle ready)
+                            pe_st_value = None
+                            pe_st_dir = None
+                            pe_hist = None
+                            if pe_ready:
+                                pe_st_value, _ = self.opt_pe_st.add_candle(self._pe_high, self._pe_low, self._pe_close)
+                                pe_st_dir = getattr(self.opt_pe_st, 'direction', None)
+                                pe_macd, _ = self.opt_pe_macd.add_candle(self._pe_high, self._pe_low, self._pe_close)
+                                if pe_macd is not None:
+                                    self._opt_pe_last_macd_value = pe_macd
+                                pe_hist = getattr(self.opt_pe_macd, 'last_histogram', None)
+
+                                if isinstance(pe_hist, (int, float)):
+                                    self._opt_pe_hist_window.append(float(pe_hist))
+
+                                bot_state['signal_pe_supertrend_value'] = float(pe_st_value) if isinstance(pe_st_value, (int, float)) else bot_state.get('signal_pe_supertrend_value', 0.0)
+                                bot_state['signal_pe_supertrend_signal'] = 'GREEN' if pe_st_dir == 1 else ('RED' if pe_st_dir == -1 else bot_state.get('signal_pe_supertrend_signal'))
+                                bot_state['signal_pe_macd_value'] = float(pe_macd) if isinstance(pe_macd, (int, float)) else bot_state.get('signal_pe_macd_value', 0.0)
+                                bot_state['signal_pe_macd_hist'] = float(pe_hist) if isinstance(pe_hist, (int, float)) else bot_state.get('signal_pe_macd_hist', 0.0)
+
+                            # Update global "latest" indicator values for UI/debug (prefer active position side)
+                            active_side = (self.current_position or {}).get('option_type')
+                            if active_side == 'PE':
+                                bot_state['supertrend_value'] = float(pe_st_value) if isinstance(pe_st_value, (int, float)) else bot_state.get('supertrend_value', 0.0)
+                                bot_state['last_supertrend_signal'] = 'GREEN' if pe_st_dir == 1 else ('RED' if pe_st_dir == -1 else bot_state.get('last_supertrend_signal'))
+                                bot_state['macd_value'] = float(self._opt_pe_last_macd_value) if isinstance(self._opt_pe_last_macd_value, (int, float)) else bot_state.get('macd_value', 0.0)
+                                bot_state['macd_hist'] = float(pe_hist) if isinstance(pe_hist, (int, float)) else bot_state.get('macd_hist', 0.0)
+                            else:
+                                bot_state['supertrend_value'] = float(ce_st_value) if isinstance(ce_st_value, (int, float)) else bot_state.get('supertrend_value', 0.0)
+                                bot_state['last_supertrend_signal'] = 'GREEN' if ce_st_dir == 1 else ('RED' if ce_st_dir == -1 else bot_state.get('last_supertrend_signal'))
+                                bot_state['macd_value'] = float(self._opt_ce_last_macd_value) if isinstance(self._opt_ce_last_macd_value, (int, float)) else bot_state.get('macd_value', 0.0)
+                                bot_state['macd_hist'] = float(ce_hist) if isinstance(ce_hist, (int, float)) else bot_state.get('macd_hist', 0.0)
+
+                            # EXIT conditions (only for the held contract)
+                            exit_reason = None
+                            if self.current_position and self.current_position.get('option_type') == 'CE':
+                                # 1) SuperTrend reverses (BUY->SELL)
+                                if ce_st_dir == -1:
+                                    exit_reason = 'SuperTrend Reversal'
+                                # Trail stop to SuperTrend value (initial + trailing)
+                                if exit_reason is None and isinstance(ce_st_value, (int, float)):
+                                    if self.trailing_sl is None:
+                                        self.trailing_sl = float(ce_st_value)
+                                    else:
+                                        self.trailing_sl = max(float(self.trailing_sl), float(ce_st_value))
+
+                                    # Apply profit lock + optional step trailing (never reduces SL)
+                                    current_ltp = float(bot_state.get('current_option_ltp') or 0.0)
+                                    self._apply_profit_lock_and_step_trailing(current_ltp)
+                                    bot_state['trailing_sl'] = self.trailing_sl
+
+                            elif self.current_position and self.current_position.get('option_type') == 'PE':
+                                if pe_st_dir == -1:
+                                    exit_reason = 'SuperTrend Reversal'
+                                if exit_reason is None and isinstance(pe_st_value, (int, float)):
+                                    if self.trailing_sl is None:
+                                        self.trailing_sl = float(pe_st_value)
+                                    else:
+                                        self.trailing_sl = max(float(self.trailing_sl), float(pe_st_value))
+
+                                    current_ltp = float(bot_state.get('current_option_ltp') or 0.0)
+                                    self._apply_profit_lock_and_step_trailing(current_ltp)
+                                    bot_state['trailing_sl'] = self.trailing_sl
+
+                            if exit_reason is not None and self.current_position:
+                                index_cfg = get_index_config(config['selected_index'])
+                                qty = config['order_qty'] * index_cfg['lot_size']
+                                exit_price = float(bot_state.get('current_option_ltp') or 0.0)
+                                pnl = (exit_price - self.entry_price) * qty
+                                logger.info(f"[EXIT] {exit_reason} | LTP={exit_price:.2f} | P&L=₹{pnl:.2f}")
+                                await self.close_position(exit_price, pnl, exit_reason)
                                 self.last_exit_candle_time = current_candle_time
 
-                        # Fixed-contract option-candle signals: ST + MACD Histogram
-                        self.apply_strategy_config()
+                            # ENTRY conditions (reverse allowed; still single-position bot)
+                            if strike and expiry:
+                                ce_ok = False
+                                pe_ok = False
 
-                        strike = bot_state.get('fixed_option_strike')
-                        expiry = bot_state.get('fixed_option_expiry')
-                        ce_sid = bot_state.get('fixed_ce_security_id')
-                        pe_sid = bot_state.get('fixed_pe_security_id')
+                                if ce_ready and ce_sid:
+                                    ce_ok = self._entry_conditions_met(
+                                        st_direction=ce_st_dir if ce_st_dir in (1, -1) else None,
+                                        hist_window=self._opt_ce_hist_window,
+                                    )
+                                if pe_ready and pe_sid:
+                                    pe_ok = self._entry_conditions_met(
+                                        st_direction=pe_st_dir if pe_st_dir in (1, -1) else None,
+                                        hist_window=self._opt_pe_hist_window,
+                                    )
 
-                        # Compute CE indicators (if candle ready)
-                        ce_st_value = None
-                        ce_st_dir = None
-                        ce_hist = None
-                        if ce_ready:
-                            ce_st_value, _ = self.opt_ce_st.add_candle(self._ce_high, self._ce_low, self._ce_close)
-                            ce_st_dir = getattr(self.opt_ce_st, 'direction', None)
-                            ce_macd, _ = self.opt_ce_macd.add_candle(self._ce_high, self._ce_low, self._ce_close)
-                            if ce_macd is not None:
-                                self._opt_ce_last_macd_value = ce_macd
-                            ce_hist = getattr(self.opt_ce_macd, 'last_histogram', None)
+                                chosen = None
+                                chosen_sid = None
+                                chosen_st_value = None
+                                if ce_ok:
+                                    chosen = 'CE'
+                                    chosen_sid = str(ce_sid)
+                                    chosen_st_value = ce_st_value
+                                elif pe_ok:
+                                    chosen = 'PE'
+                                    chosen_sid = str(pe_sid)
+                                    chosen_st_value = pe_st_value
 
-                            if isinstance(ce_hist, (int, float)):
-                                self._opt_ce_hist_window.append(float(ce_hist))
+                                if chosen and chosen_sid:
+                                    if can_take_new_trade() and bot_state['daily_trades'] < config['max_trades_per_day']:
+                                        index_ltp = float(bot_state.get('index_ltp') or 0.0)
+                                        # If a trade is active on the opposite side, close it first.
+                                        if self.current_position and (self.current_position.get('option_type') != chosen):
+                                            index_cfg = get_index_config(config['selected_index'])
+                                            qty = config['order_qty'] * index_cfg['lot_size']
+                                            exit_price = float(bot_state.get('current_option_ltp') or 0.0)
+                                            if exit_price > 0:
+                                                pnl = (exit_price - self.entry_price) * qty
+                                                logger.info(
+                                                    f"[EXIT] Reverse Entry | Closing {self.current_position.get('option_type')} before entering {chosen} | "
+                                                    f"LTP={exit_price:.2f} | P&L=₹{pnl:.2f}"
+                                                )
+                                                await self.close_position(exit_price, pnl, "Reverse Entry")
 
-                            # Publish per-option indicator values for UI/debug
-                            bot_state['signal_ce_supertrend_value'] = float(ce_st_value) if isinstance(ce_st_value, (int, float)) else bot_state.get('signal_ce_supertrend_value', 0.0)
-                            bot_state['signal_ce_supertrend_signal'] = 'GREEN' if ce_st_dir == 1 else ('RED' if ce_st_dir == -1 else bot_state.get('signal_ce_supertrend_signal'))
-                            bot_state['signal_ce_macd_value'] = float(ce_macd) if isinstance(ce_macd, (int, float)) else bot_state.get('signal_ce_macd_value', 0.0)
-                            bot_state['signal_ce_macd_hist'] = float(ce_hist) if isinstance(ce_hist, (int, float)) else bot_state.get('signal_ce_macd_hist', 0.0)
-
-                        # Compute PE indicators (if candle ready)
-                        pe_st_value = None
-                        pe_st_dir = None
-                        pe_hist = None
-                        if pe_ready:
-                            pe_st_value, _ = self.opt_pe_st.add_candle(self._pe_high, self._pe_low, self._pe_close)
-                            pe_st_dir = getattr(self.opt_pe_st, 'direction', None)
-                            pe_macd, _ = self.opt_pe_macd.add_candle(self._pe_high, self._pe_low, self._pe_close)
-                            if pe_macd is not None:
-                                self._opt_pe_last_macd_value = pe_macd
-                            pe_hist = getattr(self.opt_pe_macd, 'last_histogram', None)
-
-                            if isinstance(pe_hist, (int, float)):
-                                self._opt_pe_hist_window.append(float(pe_hist))
-
-                            bot_state['signal_pe_supertrend_value'] = float(pe_st_value) if isinstance(pe_st_value, (int, float)) else bot_state.get('signal_pe_supertrend_value', 0.0)
-                            bot_state['signal_pe_supertrend_signal'] = 'GREEN' if pe_st_dir == 1 else ('RED' if pe_st_dir == -1 else bot_state.get('signal_pe_supertrend_signal'))
-                            bot_state['signal_pe_macd_value'] = float(pe_macd) if isinstance(pe_macd, (int, float)) else bot_state.get('signal_pe_macd_value', 0.0)
-                            bot_state['signal_pe_macd_hist'] = float(pe_hist) if isinstance(pe_hist, (int, float)) else bot_state.get('signal_pe_macd_hist', 0.0)
-
-                        # Update global "latest" indicator values for UI/debug (prefer active position side)
-                        active_side = (self.current_position or {}).get('option_type')
-                        if active_side == 'PE':
-                            bot_state['supertrend_value'] = float(pe_st_value) if isinstance(pe_st_value, (int, float)) else bot_state.get('supertrend_value', 0.0)
-                            bot_state['last_supertrend_signal'] = 'GREEN' if pe_st_dir == 1 else ('RED' if pe_st_dir == -1 else bot_state.get('last_supertrend_signal'))
-                            bot_state['macd_value'] = float(self._opt_pe_last_macd_value) if isinstance(self._opt_pe_last_macd_value, (int, float)) else bot_state.get('macd_value', 0.0)
-                            bot_state['macd_hist'] = float(pe_hist) if isinstance(pe_hist, (int, float)) else bot_state.get('macd_hist', 0.0)
-                        else:
-                            bot_state['supertrend_value'] = float(ce_st_value) if isinstance(ce_st_value, (int, float)) else bot_state.get('supertrend_value', 0.0)
-                            bot_state['last_supertrend_signal'] = 'GREEN' if ce_st_dir == 1 else ('RED' if ce_st_dir == -1 else bot_state.get('last_supertrend_signal'))
-                            bot_state['macd_value'] = float(self._opt_ce_last_macd_value) if isinstance(self._opt_ce_last_macd_value, (int, float)) else bot_state.get('macd_value', 0.0)
-                            bot_state['macd_hist'] = float(ce_hist) if isinstance(ce_hist, (int, float)) else bot_state.get('macd_hist', 0.0)
-
-                        # EXIT conditions (only for the held contract)
-                        exit_reason = None
-                        if self.current_position and self.current_position.get('option_type') == 'CE':
-                            # 1) SuperTrend reverses (BUY->SELL)
-                            if ce_st_dir == -1:
-                                exit_reason = 'SuperTrend Reversal'
-                            # Trail stop to SuperTrend value (initial + trailing)
-                            if exit_reason is None and isinstance(ce_st_value, (int, float)):
-                                if self.trailing_sl is None:
-                                    self.trailing_sl = float(ce_st_value)
-                                else:
-                                    self.trailing_sl = max(float(self.trailing_sl), float(ce_st_value))
-
-                                # Apply profit lock + optional step trailing (never reduces SL)
-                                current_ltp = float(bot_state.get('current_option_ltp') or 0.0)
-                                self._apply_profit_lock_and_step_trailing(current_ltp)
-                                bot_state['trailing_sl'] = self.trailing_sl
-
-                        elif self.current_position and self.current_position.get('option_type') == 'PE':
-                            if pe_st_dir == -1:
-                                exit_reason = 'SuperTrend Reversal'
-                            if exit_reason is None and isinstance(pe_st_value, (int, float)):
-                                if self.trailing_sl is None:
-                                    self.trailing_sl = float(pe_st_value)
-                                else:
-                                    self.trailing_sl = max(float(self.trailing_sl), float(pe_st_value))
-
-                                current_ltp = float(bot_state.get('current_option_ltp') or 0.0)
-                                self._apply_profit_lock_and_step_trailing(current_ltp)
-                                bot_state['trailing_sl'] = self.trailing_sl
-
-                        if exit_reason is not None and self.current_position:
-                            index_cfg = get_index_config(config['selected_index'])
-                            qty = config['order_qty'] * index_cfg['lot_size']
-                            exit_price = float(bot_state.get('current_option_ltp') or 0.0)
-                            pnl = (exit_price - self.entry_price) * qty
-                            logger.info(f"[EXIT] {exit_reason} | LTP={exit_price:.2f} | P&L=₹{pnl:.2f}")
-                            await self.close_position(exit_price, pnl, exit_reason)
-                            self.last_exit_candle_time = current_candle_time
-
-                        # ENTRY conditions (reverse allowed; still single-position bot)
-                        if strike and expiry:
-                            ce_ok = False
-                            pe_ok = False
-
-                            if ce_ready and ce_sid:
-                                ce_ok = self._entry_conditions_met(
-                                    st_direction=ce_st_dir if ce_st_dir in (1, -1) else None,
-                                    hist_window=self._opt_ce_hist_window,
-                                )
-                            if pe_ready and pe_sid:
-                                pe_ok = self._entry_conditions_met(
-                                    st_direction=pe_st_dir if pe_st_dir in (1, -1) else None,
-                                    hist_window=self._opt_pe_hist_window,
-                                )
-
-                            chosen = None
-                            chosen_sid = None
-                            chosen_st_value = None
-                            if ce_ok:
-                                chosen = 'CE'
-                                chosen_sid = str(ce_sid)
-                                chosen_st_value = ce_st_value
-                            elif pe_ok:
-                                chosen = 'PE'
-                                chosen_sid = str(pe_sid)
-                                chosen_st_value = pe_st_value
-
-                            if chosen and chosen_sid:
-                                if can_take_new_trade() and bot_state['daily_trades'] < config['max_trades_per_day']:
-                                    index_ltp = float(bot_state.get('index_ltp') or 0.0)
-                                    # If a trade is active on the opposite side, close it first.
-                                    if self.current_position and (self.current_position.get('option_type') != chosen):
-                                        index_cfg = get_index_config(config['selected_index'])
-                                        qty = config['order_qty'] * index_cfg['lot_size']
-                                        exit_price = float(bot_state.get('current_option_ltp') or 0.0)
-                                        if exit_price > 0:
-                                            pnl = (exit_price - self.entry_price) * qty
+                                        # Enter only if flat (close succeeded or we were flat already)
+                                        if not self.current_position:
                                             logger.info(
-                                                f"[EXIT] Reverse Entry | Closing {self.current_position.get('option_type')} before entering {chosen} | "
-                                                f"LTP={exit_price:.2f} | P&L=₹{pnl:.2f}"
+                                                f"[ENTRY] {chosen} | {index_name} ATM {strike} | Expiry={expiry} | "
+                                                f"CE Hist={ce_hist} STDir={ce_st_dir} | PE Hist={pe_hist} STDir={pe_st_dir}"
                                             )
-                                            await self.close_position(exit_price, pnl, "Reverse Entry")
+                                            await self.enter_position(
+                                                chosen,
+                                                int(strike),
+                                                index_ltp,
+                                                expiry_override=str(expiry),
+                                                security_id_override=str(chosen_sid),
+                                            )
 
-                                    # Enter only if flat (close succeeded or we were flat already)
-                                    if not self.current_position:
-                                        logger.info(
-                                            f"[ENTRY] {chosen} | {index_name} ATM {strike} | Expiry={expiry} | "
-                                            f"CE Hist={ce_hist} STDir={ce_st_dir} | PE Hist={pe_hist} STDir={pe_st_dir}"
-                                        )
-                                        await self.enter_position(
-                                            chosen,
-                                            int(strike),
-                                            index_ltp,
-                                            expiry_override=str(expiry),
-                                            security_id_override=str(chosen_sid),
-                                        )
-
-                                        # Initial SL = SuperTrend value
-                                        if isinstance(chosen_st_value, (int, float)):
-                                            self.trailing_sl = float(chosen_st_value)
-                                            bot_state['trailing_sl'] = self.trailing_sl
-                                        self.last_trade_time = datetime.now()
+                                            # Initial SL = SuperTrend value
+                                            if isinstance(chosen_st_value, (int, float)):
+                                                self.trailing_sl = float(chosen_st_value)
+                                                bot_state['trailing_sl'] = self.trailing_sl
+                                            self.last_trade_time = datetime.now()
 
                         # Prevent immediate re-trade within same candle after exit
                         can_trade = True
