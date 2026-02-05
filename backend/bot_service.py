@@ -102,6 +102,12 @@ def get_market_data() -> dict:
         "fixed_option_expiry": bot_state.get('fixed_option_expiry'),
         "fixed_ce_security_id": bot_state.get('fixed_ce_security_id'),
         "fixed_pe_security_id": bot_state.get('fixed_pe_security_id'),
+        # Multi-contract universe (optional)
+        "option_universe_enabled": bool(bot_state.get('option_universe_enabled', False)),
+        "option_universe_center_strike": bot_state.get('option_universe_center_strike'),
+        "option_universe_expiry": bot_state.get('option_universe_expiry'),
+        "option_universe_strikes": bot_state.get('option_universe_strikes', []),
+        "option_universe_contracts": bot_state.get('option_universe_contracts', {}),
         # Kept for backward compatibility with older UI builds.
         "adx_value": 0.0,
         "signal_status": bot_state['signal_status'],
@@ -145,12 +151,20 @@ async def get_market_data_live() -> dict:
         except Exception:
             pass
 
-        # Ensure fixed contract exists
-        if not (bot_state.get('fixed_ce_security_id') and bot_state.get('fixed_pe_security_id')):
-            try:
-                await bot._ensure_fixed_option_contract(index_name, float(bot_state.get('index_ltp', 0.0) or 0.0))
-            except Exception:
-                pass
+        # Ensure fixed contract or option-universe exists
+        steps = int(config.get('option_universe_strike_steps', 0) or 0)
+        if steps > 0:
+            if not bool(bot_state.get('option_universe_enabled', False)):
+                try:
+                    await bot._ensure_option_universe(index_name, float(bot_state.get('index_ltp', 0.0) or 0.0))
+                except Exception:
+                    pass
+        else:
+            if not (bot_state.get('fixed_ce_security_id') and bot_state.get('fixed_pe_security_id')):
+                try:
+                    await bot._ensure_fixed_option_contract(index_name, float(bot_state.get('index_ltp', 0.0) or 0.0))
+                except Exception:
+                    pass
 
         ce_sid = bot_state.get('fixed_ce_security_id')
         pe_sid = bot_state.get('fixed_pe_security_id')
@@ -521,6 +535,8 @@ def get_config() -> dict:
         "lot_size": index_config['lot_size'],
         "strike_interval": index_config['strike_interval'],
         "expiry_type": index_config.get('expiry_type', 'weekly'),
+        # Option universe
+        "option_universe_strike_steps": int(config.get('option_universe_strike_steps', 0) or 0),
         # Risk Parameters
         "order_qty": config['order_qty'],
         "max_trades_per_day": config['max_trades_per_day'],
@@ -611,6 +627,20 @@ async def update_config_values(updates: dict) -> dict:
         config['risk_per_trade'] = float(updates['risk_per_trade'])
         updated_fields.append('risk_per_trade')
         logger.info(f"[CONFIG] Risk per trade changed to: ₹{config['risk_per_trade']}")
+
+    if updates.get('option_universe_strike_steps') is not None:
+        try:
+            steps = int(updates['option_universe_strike_steps'])
+        except Exception:
+            steps = 0
+        # Safety cap: avoid accidental huge quote lists.
+        steps = max(0, min(20, steps))
+        config['option_universe_strike_steps'] = steps
+        updated_fields.append('option_universe_strike_steps')
+        logger.info(f"[CONFIG] option_universe_strike_steps set to: {steps}")
+        # Rebuild universe + indicators cleanly
+        bot = get_trading_bot()
+        bot.reset_indicator()
 
     # Strategy / Agent
     if updates.get('strategy_mode') is not None:

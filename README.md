@@ -200,6 +200,21 @@ Access at: `http://localhost:3000`
   - GREEN = Buy CE (Call)
   - RED = Buy PE (Put)
 - **Strike**: ATM (spot rounded to nearest 50)
+
+#### Multi-strike Contract Universe (Optional)
+By default the bot tracks a single ATM CE/PE contract for signals.
+
+You can enable a *strike band* around ATM (example: 5 below + ATM + 5 above) so the bot:
+- Fetches CE/PE for each strike in the band
+- Computes the same indicators per contract (same entry rules)
+- When multiple contracts qualify, enters the contract whose strike is **nearest to the current index LTP** (ATM)
+
+Config key:
+- `option_universe_strike_steps`
+  - `0` = single ATM (default)
+  - `5` = 11 strikes (5 below + ATM + 5 above) → 22 option contracts (CE+PE)
+
+Note: enabling this increases quote/option-chain load.
 - **Exit Conditions** (priority order):
   1. Max Loss Per Trade exceeded ⚠️
   2. Target Points hit ✓

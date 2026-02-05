@@ -36,6 +36,13 @@ bot_state = {
     "fixed_pe_security_id": None,
     "signal_ce_ltp": 0.0,
     "signal_pe_ltp": 0.0,
+    # Multi-contract option universe (optional; configured via option_universe_strike_steps)
+    # When enabled, the bot maintains CE+PE contracts for strikes around the ATM strike.
+    "option_universe_enabled": False,
+    "option_universe_center_strike": None,
+    "option_universe_expiry": None,
+    "option_universe_strikes": [],
+    "option_universe_contracts": {},
     # Per-option indicators for the fixed ATM contracts (for UI/validation)
     "signal_ce_supertrend_signal": None,
     "signal_pe_supertrend_signal": None,
@@ -86,6 +93,11 @@ config = {
 
     # Testing utilities
     # When enabled, the bot loop will run outside market hours and simulate LTPs.
+
+    # Option contract universe
+    # 0 = current behavior (single ATM CE/PE)
+    # 5 = 5 strikes below + ATM + 5 strikes above (11 strikes, 22 contracts)
+    "option_universe_strike_steps": 0,
 }
 
 # SQLite Database path

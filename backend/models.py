@@ -19,6 +19,11 @@ class ConfigUpdate(BaseModel):
     min_trade_gap: Optional[int] = None  # Minimum seconds between trades
     trade_only_on_flip: Optional[bool] = None  # Only trade on SuperTrend flip
 
+    # Option contract universe
+    # 0 = single ATM (current behavior)
+    # N = N strikes below + ATM + N strikes above
+    option_universe_strike_steps: Optional[int] = None
+
     # Market-hours overrides (special sessions)
     allow_weekend_trading: Optional[bool] = None
 
